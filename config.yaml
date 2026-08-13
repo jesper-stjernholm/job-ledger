@@ -1,137 +1,143 @@
 site_title: Job Ledger
 
-# ---------------------------------------------------------------------------
-# WHO YOU ARE
-# The model sees this once per batch. Keep it to ~150 words of signal — years
-# of experience, core stack, seniority you want, location and work-authorisation
-# constraints, and any hard dealbreakers. A pasted full CV mostly adds noise.
+# ===========================================================================
+# Staff / principal / lead — design & product — worldwide remote
 #
-# In production, set this via the PROFILE repo secret instead so it stays out
-# of a public repo. The env var wins over this field.
-# ---------------------------------------------------------------------------
-profile: |
-  Backend engineer, 8 years. Python and Go, distributed systems, Postgres,
-  Kubernetes. Led a team of four for the last two years.
-  Based in Copenhagen, EU work authorisation, no US visa.
-  Wants: senior or staff IC roles, remote-EU or Copenhagen hybrid.
-  Dealbreakers: on-site outside Denmark, crypto, adtech, on-call-heavy SRE.
+# IMPORTANT: this covers BOTH product design and product management, because
+# "design or product" is two different jobs with different vocabularies.
+# Delete the half that isn't you — keeping both means roughly half your daily
+# quota gets spent scoring roles you'd never take.
+# Look for the >>> DESIGN <<< and >>> PRODUCT <<< markers below.
+# ===========================================================================
+
+# Your profile lives in the PROFILE GitHub secret (from profile.txt), not here.
+profile: ""
 
 # ---------------------------------------------------------------------------
-# BOARDS TO WATCH
-# ats: greenhouse | lever | ashby
-# slug: the company identifier in their careers URL, e.g.
-#   boards.greenhouse.io/monzo        -> greenhouse, slug: monzo
-#   jobs.lever.co/plaid               -> lever,      slug: plaid
-#   jobs.ashbyhq.com/linear           -> ashby,      slug: linear
+# COMPANIES — deliberately empty.
 #
-# Start with 15-30 companies you would actually say yes to. Curation here
-# beats filtering later — aggregators mostly add noise you then pay to score.
+# You don't have a list yet, and inventing one is what produced all those 404s.
+# The aggregators below run fine without it. When a posting scores well, its
+# company gets logged to state/discovered.json — promote those here as you find
+# them, and you'll start seeing their roles the day they post rather than a day
+# later through a cache.
+#
+# Format when you add some:
+#   - {name: Linear, ats: ashby, slug: linear}
+# The slug is the last part of their careers URL (jobs.ashbyhq.com/linear).
 # ---------------------------------------------------------------------------
-companies:
-  - {name: Linear,    ats: ashby,      slug: linear}
-  - {name: Ramp,      ats: ashby,      slug: ramp}
-  - {name: Vercel,    ats: ashby,      slug: vercel}
-  - {name: Monzo,     ats: greenhouse, slug: monzo}
-  - {name: Pleo,      ats: greenhouse, slug: pleo}
-  - {name: Plaid,     ats: lever,      slug: plaid}
+companies: []
 
 # ---------------------------------------------------------------------------
-# AGGREGATOR SEARCHES — for discovering companies you don't know yet.
+# SEARCHES — your only source until companies fills up. Filters are applied
+# server-side, which is the cheapest stage in the whole pipeline.
 #
-# Each entry is one API call with filters applied SERVER-SIDE. This is the
-# cheapest filtering there is: a posting you never download costs nothing.
-# Prefer several narrow searches over one broad crawl.
+# `worldwide: true` is doing real work here: it returns only roles with no
+# country restriction, which is what you asked for, and drops the large number
+# of "remote (US only)" listings for free.
 #
-# himalayas: q, country, worldwide, seniority, employment_type, company,
-#            timezone, sort, page      (free, no key, refreshed every 24h)
-# remotive:  search, category, limit   (free, no key)
-# remoteok:  tags                      (free, no key)
-#
-# All three ask for visible credit when you display their data. The page
-# footer handles it automatically for whichever boards a run actually used.
+# Himalayas seniority values are: Entry-level, Mid-level, Senior, Manager,
+# Director, Executive. There is no "Staff" — senior IC design roles are filed
+# under Senior and lead roles under Manager, so ask for both.
 # ---------------------------------------------------------------------------
 searches:
-  - {board: himalayas, label: senior-backend, q: "backend engineer",
-     seniority: Senior, employment_type: "Full Time", sort: recent}
-  - {board: himalayas, label: staff-python, q: "python", seniority: Senior, sort: recent}
-  - {board: himalayas, label: denmark, country: DK, sort: recent}
-  - {board: remotive,  label: software-dev, category: "software-dev", limit: 50}
-  - {board: remoteok,  label: golang, tags: golang}
+  # >>> DESIGN <<<
+  - {board: himalayas, label: product-design, q: "product designer",
+     worldwide: true, seniority: [Senior, Manager], sort: recent}
+  - {board: himalayas, label: design-lead, q: "design lead",
+     worldwide: true, sort: recent}
+  - {board: remotive,  label: design, search: "product designer", limit: 50}
+  - {board: remoteok,  label: design, tags: design}
+
+  # >>> PRODUCT <<<
+  - {board: himalayas, label: product-mgmt, q: "product manager",
+     worldwide: true, seniority: [Senior, Manager, Director], sort: recent}
+  - {board: remotive,  label: product, search: "product manager", limit: 50}
 
 # ---------------------------------------------------------------------------
-# LOCAL RULES — free, run before anything reaches the model.
-# Case-insensitive regex, matched against the field named. Leave a list empty
-# to skip that check. These do the heavy lifting: they typically cut 80-90%.
+# RULES — the coarse net. Deliberately loose to begin with.
+#
+# location_include is COMMENTED OUT ON PURPOSE. Every board writes locations
+# differently, and an over-tight pattern here silently drops everything — that
+# was the single biggest hazard in the config you had. You're already on
+# remote-only boards asking for worldwide roles, so it's filtered upstream.
+# Leave it off until you've seen a week of real output.
 # ---------------------------------------------------------------------------
 rules:
   title_include:
-    - "engineer|developer|swe"
+    - "design|designer|ux|ui\\b"                                     # >>> DESIGN <<<
+    - "product manager|product owner|product lead|head of product"   # >>> PRODUCT <<<
+
   title_exclude:
-    - "intern|graduate|apprentice"
-    - "sales|recruiter|marketing|support"
-    - "manager|director|vp |head of"        # drop if you want management roles
-  # Careful: the two source types spell location completely differently.
-  #   ATS boards     -> city strings: "London, UK", "Copenhagen"
-  #   Aggregators    -> "Worldwide", or a country allow-list: "United States, Canada"
-  # A rule set tuned on ATS boards will silently drop your ENTIRE aggregator
-  # feed, because nothing matches the word "Worldwide". Always keep the first
-  # line below. Check the dry-run counts after editing this.
-  location_include:
-    - "worldwide|global|anywhere"
-    - "remote|distributed"
-    - "copenhagen|denmark|k\u00f8benhavn"
-    - "europe|emea|eu\\b"
-    - "london|berlin|amsterdam|stockholm|dublin|barcelona"
+    - "intern|graduate|apprentice|entry.level|junior"
+    - "product marketing"                # different job; matches "product" constantly
+    - "sales|recruit|account executive"
+    - "graphic design|brand designer"    # delete this line if you DO want brand work
+
+  # location_include:
+  #   - "worldwide|global|anywhere|remote"
+
   description_exclude:
+    - "must be (located|based) in the (us|united states)"
     - "security clearance"
-    - "must be located in the (us|united states)"
 
 # ---------------------------------------------------------------------------
-# AFFINITY — the free ranking stage between the rules and the model.
+# AFFINITY — the free ranking stage. Weighted regex over title + excerpt.
+# A title hit is worth title_boost times a body hit. Each pattern counts once,
+# so repetition can't game it.
 #
-# Aggregators can produce hundreds of new postings a day. This decides which
-# ones are worth paying to score. Weighted regex over title + excerpt; each
-# pattern counts once, so repetition can't game it. Negative weights sink
-# things you don't want.
-#
-# Tune this, not the prompt. It's free to run and you can see exactly why any
-# posting scored what it did (`python agent.py --dry-run` prints the numbers).
+# min_score is 0 ON PURPOSE. You've had a week of nothing, so let everything
+# through and look at the real numbers first. Raise it later to sit just under
+# where the good roles land.
 # ---------------------------------------------------------------------------
 affinity:
   keywords:
-    '\bpython\b': 3
-    '\bgo\b|\bgolang\b': 3
-    'postgres|postgresql': 2
-    'distributed systems|microservices|high scale': 2
-    'kubernetes|k8s': 1
-    '\bstaff\b|\bprincipal\b': 3
+    # >>> DESIGN <<<
+    'product design|product designer': 4
+    'design system': 3
+    'ux|user experience|interaction design': 2
+    'user research|usability|discovery': 2
+    'figma': 2
+    'prototyp': 1
+
+    # >>> PRODUCT <<<
+    'product manage|product management|product owner': 4
+    'roadmap|product strategy': 2
+    'cross.functional': 1
+
+    # level — the main thing separating a staff role from a mid one
+    'staff|principal': 4
+    '\blead\b|head of': 3
+    'director': 2
     '\bsenior\b': 2
-    '\blead\b': 1
+
     # negatives — cheaper to sink here than to explain to the model
-    '\bphp\b|\bwordpress\b|\bdrupal\b': -4
-    'crypto|web3|blockchain|nft': -5
-    'adtech|ad tech|programmatic advertising': -4
-    '\bintern\b|\bgraduate\b|\bjunior\b': -5
-    'on-call rotation|24/7 support': -2
-  title_boost: 3      # a hit in the title is worth this much more than in the body
-  min_score: 4        # below this, never reaches the model
-  max_to_model: 25    # only the top N by affinity get scored
+    'junior|entry.level|\bintern\b|graduate': -8
+    'product marketing|growth marketing': -5
+    '\bsales\b|account executive|business development': -6
+    'engineer|developer|architect': -3
+    # uncomment anything you want nothing to do with:
+    # 'crypto|web3|blockchain|nft': -6
+    # 'gambling|betting|casino': -6
+    # 'defense|defence|military': -6
+
+  title_boost: 3
+  min_score: 0        # raise once you've seen real scores (doctor.py section 6)
+  max_to_model: 25    # only the top N are ever paid for — this caps your cost
 
 # ---------------------------------------------------------------------------
 # COST CONTROLS
 # ---------------------------------------------------------------------------
-description_chars: 1200   # truncate each posting; requirements live near the top
-batch_size: 15            # postings per API call
-max_scored_per_run: 40    # hard ceiling across all sources
-polite_delay: 1.0         # seconds between aggregator calls; they're free, don't hammer
-
-# Aggregator postings scoring at or above this get their company logged to
-# state/discovered.json for you to review and promote to `companies:`.
+description_chars: 1200
+batch_size: 15
+max_scored_per_run: 40
+polite_delay: 1.0
 discovery_threshold: 7.0
 
 # ---------------------------------------------------------------------------
-# DISPLAY
+# DISPLAY — lowered for the first week so you can see scores and calibrate.
+# Raise display_threshold to 6 or 7 once you trust them.
 # ---------------------------------------------------------------------------
-display_threshold: 5.0    # hide anything below this from the page
-highlight_threshold: 8.0  # mark as a strong match
-retain_days: 21           # drop postings from the page after this many days
+display_threshold: 3.0
+highlight_threshold: 8.0
+retain_days: 21

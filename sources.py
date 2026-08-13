@@ -40,6 +40,22 @@ def strip_html(raw: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _qs(params: dict) -> dict:
+    """
+    Python renders True as "True"; these APIs expect "true". YAML booleans in
+    config.yaml arrive here as real bools, so normalise before sending.
+    """
+    out = {}
+    for key, value in (params or {}).items():
+        if isinstance(value, bool):
+            out[key] = "true" if value else "false"
+        elif isinstance(value, list):
+            out[key] = [("true" if v is True else "false" if v is False else v) for v in value]
+        else:
+            out[key] = value
+    return out
+
+
 def _get(url: str, params: dict | None = None):
     resp = requests.get(url, params=params, timeout=TIMEOUT, headers=UA)
     resp.raise_for_status()
@@ -130,7 +146,7 @@ def fetch_himalayas(query: dict) -> list[dict]:
     Params: q, country, worldwide, seniority, employment_type, company,
     timezone, sort, page.
     """
-    data = _get("https://himalayas.app/jobs/api/search", params=query)
+    data = _get("https://himalayas.app/jobs/api/search", params=_qs(query))
     out = []
     for j in data.get("jobs", []):
         countries = [c.get("name", "") for c in (j.get("locationRestrictions") or [])]
@@ -162,7 +178,7 @@ def fetch_himalayas(query: dict) -> list[dict]:
 
 def fetch_remotive(query: dict) -> list[dict]:
     """https://remotive.com/remote-jobs/api — free, no key."""
-    data = _get("https://remotive.com/api/remote-jobs", params=query)
+    data = _get("https://remotive.com/api/remote-jobs", params=_qs(query))
     out = []
     for j in data.get("jobs", []):
         desc = strip_html(j.get("description"))
@@ -185,7 +201,7 @@ def fetch_remoteok(query: dict) -> list[dict]:
     https://remoteok.com/api — free JSON feed. The first array element is a
     legal/attribution notice rather than a job; skip it.
     """
-    resp = requests.get("https://remoteok.com/api", params=query,
+    resp = requests.get("https://remoteok.com/api", params=_qs(query),
                         timeout=TIMEOUT, headers=UA)
     resp.raise_for_status()
     rows = resp.json()
