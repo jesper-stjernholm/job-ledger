@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+# Your profile is uploaded as an encrypted GitHub secret, never committed.
+# This repo is PUBLIC — do not remove this line.
+profile.txt

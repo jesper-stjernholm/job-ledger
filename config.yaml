@@ -1,0 +1,137 @@
+site_title: Job Ledger
+
+# ---------------------------------------------------------------------------
+# WHO YOU ARE
+# The model sees this once per batch. Keep it to ~150 words of signal — years
+# of experience, core stack, seniority you want, location and work-authorisation
+# constraints, and any hard dealbreakers. A pasted full CV mostly adds noise.
+#
+# In production, set this via the PROFILE repo secret instead so it stays out
+# of a public repo. The env var wins over this field.
+# ---------------------------------------------------------------------------
+profile: |
+  Backend engineer, 8 years. Python and Go, distributed systems, Postgres,
+  Kubernetes. Led a team of four for the last two years.
+  Based in Copenhagen, EU work authorisation, no US visa.
+  Wants: senior or staff IC roles, remote-EU or Copenhagen hybrid.
+  Dealbreakers: on-site outside Denmark, crypto, adtech, on-call-heavy SRE.
+
+# ---------------------------------------------------------------------------
+# BOARDS TO WATCH
+# ats: greenhouse | lever | ashby
+# slug: the company identifier in their careers URL, e.g.
+#   boards.greenhouse.io/monzo        -> greenhouse, slug: monzo
+#   jobs.lever.co/plaid               -> lever,      slug: plaid
+#   jobs.ashbyhq.com/linear           -> ashby,      slug: linear
+#
+# Start with 15-30 companies you would actually say yes to. Curation here
+# beats filtering later — aggregators mostly add noise you then pay to score.
+# ---------------------------------------------------------------------------
+companies:
+  - {name: Linear,    ats: ashby,      slug: linear}
+  - {name: Ramp,      ats: ashby,      slug: ramp}
+  - {name: Vercel,    ats: ashby,      slug: vercel}
+  - {name: Monzo,     ats: greenhouse, slug: monzo}
+  - {name: Pleo,      ats: greenhouse, slug: pleo}
+  - {name: Plaid,     ats: lever,      slug: plaid}
+
+# ---------------------------------------------------------------------------
+# AGGREGATOR SEARCHES — for discovering companies you don't know yet.
+#
+# Each entry is one API call with filters applied SERVER-SIDE. This is the
+# cheapest filtering there is: a posting you never download costs nothing.
+# Prefer several narrow searches over one broad crawl.
+#
+# himalayas: q, country, worldwide, seniority, employment_type, company,
+#            timezone, sort, page      (free, no key, refreshed every 24h)
+# remotive:  search, category, limit   (free, no key)
+# remoteok:  tags                      (free, no key)
+#
+# All three ask for visible credit when you display their data. The page
+# footer handles it automatically for whichever boards a run actually used.
+# ---------------------------------------------------------------------------
+searches:
+  - {board: himalayas, label: senior-backend, q: "backend engineer",
+     seniority: Senior, employment_type: "Full Time", sort: recent}
+  - {board: himalayas, label: staff-python, q: "python", seniority: Senior, sort: recent}
+  - {board: himalayas, label: denmark, country: DK, sort: recent}
+  - {board: remotive,  label: software-dev, category: "software-dev", limit: 50}
+  - {board: remoteok,  label: golang, tags: golang}
+
+# ---------------------------------------------------------------------------
+# LOCAL RULES — free, run before anything reaches the model.
+# Case-insensitive regex, matched against the field named. Leave a list empty
+# to skip that check. These do the heavy lifting: they typically cut 80-90%.
+# ---------------------------------------------------------------------------
+rules:
+  title_include:
+    - "engineer|developer|swe"
+  title_exclude:
+    - "intern|graduate|apprentice"
+    - "sales|recruiter|marketing|support"
+    - "manager|director|vp |head of"        # drop if you want management roles
+  # Careful: the two source types spell location completely differently.
+  #   ATS boards     -> city strings: "London, UK", "Copenhagen"
+  #   Aggregators    -> "Worldwide", or a country allow-list: "United States, Canada"
+  # A rule set tuned on ATS boards will silently drop your ENTIRE aggregator
+  # feed, because nothing matches the word "Worldwide". Always keep the first
+  # line below. Check the dry-run counts after editing this.
+  location_include:
+    - "worldwide|global|anywhere"
+    - "remote|distributed"
+    - "copenhagen|denmark|k\u00f8benhavn"
+    - "europe|emea|eu\\b"
+    - "london|berlin|amsterdam|stockholm|dublin|barcelona"
+  description_exclude:
+    - "security clearance"
+    - "must be located in the (us|united states)"
+
+# ---------------------------------------------------------------------------
+# AFFINITY — the free ranking stage between the rules and the model.
+#
+# Aggregators can produce hundreds of new postings a day. This decides which
+# ones are worth paying to score. Weighted regex over title + excerpt; each
+# pattern counts once, so repetition can't game it. Negative weights sink
+# things you don't want.
+#
+# Tune this, not the prompt. It's free to run and you can see exactly why any
+# posting scored what it did (`python agent.py --dry-run` prints the numbers).
+# ---------------------------------------------------------------------------
+affinity:
+  keywords:
+    '\bpython\b': 3
+    '\bgo\b|\bgolang\b': 3
+    'postgres|postgresql': 2
+    'distributed systems|microservices|high scale': 2
+    'kubernetes|k8s': 1
+    '\bstaff\b|\bprincipal\b': 3
+    '\bsenior\b': 2
+    '\blead\b': 1
+    # negatives — cheaper to sink here than to explain to the model
+    '\bphp\b|\bwordpress\b|\bdrupal\b': -4
+    'crypto|web3|blockchain|nft': -5
+    'adtech|ad tech|programmatic advertising': -4
+    '\bintern\b|\bgraduate\b|\bjunior\b': -5
+    'on-call rotation|24/7 support': -2
+  title_boost: 3      # a hit in the title is worth this much more than in the body
+  min_score: 4        # below this, never reaches the model
+  max_to_model: 25    # only the top N by affinity get scored
+
+# ---------------------------------------------------------------------------
+# COST CONTROLS
+# ---------------------------------------------------------------------------
+description_chars: 1200   # truncate each posting; requirements live near the top
+batch_size: 15            # postings per API call
+max_scored_per_run: 40    # hard ceiling across all sources
+polite_delay: 1.0         # seconds between aggregator calls; they're free, don't hammer
+
+# Aggregator postings scoring at or above this get their company logged to
+# state/discovered.json for you to review and promote to `companies:`.
+discovery_threshold: 7.0
+
+# ---------------------------------------------------------------------------
+# DISPLAY
+# ---------------------------------------------------------------------------
+display_threshold: 5.0    # hide anything below this from the page
+highlight_threshold: 8.0  # mark as a strong match
+retain_days: 21           # drop postings from the page after this many days

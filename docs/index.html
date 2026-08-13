@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Job Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#e9edf1; --card:#fdfeff; --ink:#121b2a; --soft:#5a6879;
+  --rule:#c9d2dc; --strong:#0b5f52; --fresh:#a8560b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:16px; line-height:1.5;
+  padding:clamp(20px,5vw,64px) clamp(16px,5vw,32px);
+}
+.wrap{max-width:820px;margin:0 auto}
+
+header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:8px}
+h1{
+  font-family:"Instrument Serif",Georgia,serif;
+  font-size:clamp(38px,8vw,60px); font-weight:400; line-height:.95;
+  letter-spacing:-.01em;
+}
+.meta{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--soft); margin-top:10px;
+  display:flex; flex-wrap:wrap; gap:6px 18px;
+}
+
+.day{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--soft); padding:26px 0 8px;
+  display:flex; justify-content:space-between; align-items:baseline;
+}
+
+.row{
+  display:grid; grid-template-columns:62px 1fr; gap:0 18px;
+  background:var(--card); border:1px solid var(--rule);
+  border-radius:2px; padding:14px 18px 14px 0; margin-bottom:6px;
+  transition:border-color .12s ease;
+}
+.row:hover,.row:focus-within{border-color:var(--ink)}
+
+.gutter{
+  border-right:1px solid var(--rule); padding:2px 14px 2px 18px;
+  text-align:right;
+}
+.score{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:21px; font-weight:500; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; color:var(--soft);
+}
+.row[data-tier="high"] .score{color:var(--strong)}
+.row[data-tier="high"]{border-left:2px solid var(--strong)}
+.flag{
+  display:block; margin-top:3px; color:var(--fresh);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+}
+
+.title{font-size:17px; font-weight:600; line-height:1.3}
+.title a{color:inherit; text-decoration:none}
+.title a:hover{text-decoration:underline; text-underline-offset:3px}
+.title a:focus-visible{outline:2px solid var(--strong); outline-offset:3px}
+.where{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px; color:var(--soft); margin-top:4px;
+}
+.why{font-size:14px; color:var(--soft); margin-top:7px; max-width:56ch}
+.srcs{margin-top:8px; display:flex; flex-wrap:wrap; gap:5px}
+.src{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--soft); border:1px solid var(--rule);
+  border-radius:2px; padding:2px 6px;
+}
+footer a{color:var(--soft)}
+
+.empty{
+  border:1px dashed var(--rule); border-radius:2px;
+  padding:40px 24px; text-align:center; color:var(--soft); font-size:15px;
+}
+footer{
+  margin-top:44px; padding-top:14px; border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--soft);
+}
+@media (max-width:520px){
+  .row{grid-template-columns:52px 1fr; gap:0 12px; padding-right:14px}
+  .gutter{padding-left:12px; padding-right:10px}
+  .score{font-size:18px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Job Ledger</h1>
+  <div class="meta">
+    <span>Updated 13 Aug 2026, 15:50 UTC</span>
+    <span>3 open &middot; 3 new today</span>
+    <span>6 boards watched</span>
+  </div>
+</header>
+<div class="day"><span>THU 13 AUG</span><span>3 arrivals</span></div>
+<article class="row" data-tier="high"><div class="gutter"><span class="score">9.1</span><span class="flag">New</span></div><div><h2 class="title"><a href="https://h/4" target="_blank" rel="noopener">Staff Python Engineer</a></h2><p class="where">Ghost &middot; Worldwide</p><p class="why">Stack and seniority line up.</p><p class="srcs"><span class="src">himalayas</span></p></div></article>
+<article class="row" data-tier="high"><div class="gutter"><span class="score">8.4</span><span class="flag">New</span></div><div><h2 class="title"><a href="https://h/1" target="_blank" rel="noopener">Senior Backend Engineer</a></h2><p class="where">Doist &middot; Worldwide &middot; USD 140K-180K</p><p class="why">Stack and seniority line up.</p><p class="srcs"><span class="src">himalayas</span> <span class="src">remotive</span></p></div></article>
+<article class="row" data-tier="std"><div class="gutter"><span class="score">7.2</span><span class="flag">New</span></div><div><h2 class="title"><a href="https://a/6" target="_blank" rel="noopener">Backend Engineer</a></h2><p class="where">Linear &middot; Remote (EU)</p><p class="why">Stack and seniority line up.</p><p class="srcs"><span class="src">ashby</span></p></div></article>
+<footer>Scored by claude-haiku-4-5-20251001 &middot; $0.0104 this run &middot; postings expire after 21 days &middot; listings via <a href="https://himalayas.app">Himalayas</a>, <a href="https://remotive.com">Remotive</a>, <a href="https://remoteok.com">Remote OK</a></footer>
+</div>
+</body>
+</html>
