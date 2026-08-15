@@ -21,18 +21,15 @@ import os
 import re
 import sys
 from dataclasses import dataclass, asdict, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-import yaml
-
+import db
 import rank
 import sources
 from sources import strip_html
 
 ROOT = Path(__file__).parent
-CONFIG_PATH = ROOT / "config.yaml"
-STATE_PATH = ROOT / "state" / "seen.json"
 OUTPUT_PATH = ROOT / "docs" / "index.html"
 
 MODEL = "claude-haiku-4-5-20251001"
@@ -173,19 +170,6 @@ def score_jobs(jobs: list[Job], profile: str, cfg: dict) -> tuple[list[Job], flo
                 job.reason = str(result.get("reason", ""))[:160]
 
     return jobs, cost
-
-
-# ---------------------------------------------------------------------- state
-
-def load_state() -> dict:
-    if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text())
-    return {"seen": [], "board": []}
-
-
-def save_state(state: dict) -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=1, sort_keys=True))
 
 
 # --------------------------------------------------------------------- render
@@ -389,106 +373,121 @@ def main() -> int:
                         help="fetch, dedup and rank only; no API call, no state written")
     args = parser.parse_args()
 
-    cfg = yaml.safe_load(CONFIG_PATH.read_text())
-    profile = os.environ.get("PROFILE") or cfg.get("profile", "")
-    if not profile.strip() and not args.dry_run:
-        print("No profile set. Put it in the PROFILE secret or config.yaml.", file=sys.stderr)
-        return 1
+    started_at = datetime.now(timezone.utc).isoformat()
 
-    state = load_state()
-    seen = set(state.get("seen", []))
+    with db.connect() as conn:
+        db.init_schema(conn)
+        settings = db.get_settings(conn)
+        profile = os.environ.get("PROFILE") or settings.get("profile_text", "")
+        if not profile.strip() and not args.dry_run:
+            print("No profile set. Put it in the PROFILE env var.", file=sys.stderr)
+            return 1
 
-    fetched, used_boards = sources.collect(
-        cfg.get("companies", []), cfg.get("searches", []),
-        cfg.get("polite_delay", 1.0))
-    print(f"\n{len(fetched):>5} fetched")
+        rules = {
+            "title_include": db.get_roles(conn),
+            "title_exclude": db.get_exclusions(conn, "title"),
+            "description_exclude": db.get_exclusions(conn, "description"),
+        }
+        affinity_cfg = {
+            "keywords": db.get_keywords(conn),
+            "title_boost": settings["title_boost"],
+            "min_score": settings["min_affinity"],
+            "max_to_model": settings["max_to_model"],
+        }
 
-    fresh = [j for j in fetched if j["uid"] not in seen]
-    print(f"{len(fresh):>5} not seen before")
+        companies, searches = db.get_boards_and_searches(conn)
+        seen = db.get_seen_uids(conn)
 
-    # Cross-source dedup BEFORE rules and ranking: the same role on three
-    # boards is one decision, not three.
-    deduped = rank.merge(fresh)
-    if len(fresh) != len(deduped):
-        print(f"{len(deduped):>5} after cross-board dedup ({len(fresh) - len(deduped)} duplicates)")
+        fetched, used_boards = sources.collect(companies, searches, settings["polite_delay"])
+        print(f"\n{len(fetched):>5} fetched")
 
-    passed = rule_filter(deduped, cfg.get("rules", {}))
-    print(f"{len(passed):>5} passed local rules")
+        fresh = [j for j in fetched if j["uid"] not in seen]
+        print(f"{len(fresh):>5} not seen before")
 
-    shortlist, overflow = rank.rank(passed, cfg)
-    cap = cfg.get("max_scored_per_run", 40)
-    shortlist = shortlist[:cap]
-    if overflow:
-        print(f"{len(overflow):>5} ranked below the cut (cheapest rejection there is)")
-    print(f"{len(shortlist):>5} going to the model")
+        # Cross-source dedup BEFORE rules and ranking: the same role on three
+        # boards is one decision, not three.
+        deduped = rank.merge(fresh)
+        if len(fresh) != len(deduped):
+            print(f"{len(deduped):>5} after cross-board dedup ({len(fresh) - len(deduped)} duplicates)")
 
-    if args.dry_run:
-        print("\n--dry-run: no API call. Top of the shortlist:\n")
-        for job in shortlist[:15]:
-            marks = f" +{','.join(job['also_on'])}" if job.get("also_on") else ""
-            print(f"  {job['affinity']:>6.1f}  {job['company'][:18]:<18} "
-                  f"{job['title'][:44]:<44} [{job['source']}{marks}]")
+        passed = rule_filter(deduped, rules)
+        print(f"{len(passed):>5} passed local rules")
+
+        shortlist, overflow = rank.rank(passed, {"affinity": affinity_cfg})
         if overflow:
-            print("\n  just below the cut:")
-            for job in overflow[:5]:
-                print(f"  {job['affinity']:>6.1f}  {job['company'][:18]:<18} {job['title'][:44]}")
+            print(f"{len(overflow):>5} ranked below the cut (cheapest rejection there is)")
+        print(f"{len(shortlist):>5} going to the model")
+
+        if args.dry_run:
+            print("\n--dry-run: no API call. Top of the shortlist:\n")
+            for job in shortlist[:15]:
+                marks = f" +{','.join(job['also_on'])}" if job.get("also_on") else ""
+                print(f"  {job['affinity']:>6.1f}  {job['company'][:18]:<18} "
+                      f"{job['title'][:44]:<44} [{job['source']}{marks}]")
+            if overflow:
+                print("\n  just below the cut:")
+                for job in overflow[:5]:
+                    print(f"  {job['affinity']:>6.1f}  {job['company'][:18]:<18} {job['title'][:44]}")
+            return 0
+
+        candidates = [Job(**{k: v for k, v in j.items() if k in Job.__annotations__})
+                      for j in shortlist]
+
+        cost = 0.0
+        if candidates:
+            print(f"\nscoring {len(candidates)} in batches of {settings['batch_size']}...")
+            candidates, cost = score_jobs(candidates, profile, settings)
+            print(f"estimated cost: ${cost:.4f}")
+
+        today = date.today().isoformat()
+        for job in candidates:
+            job.first_seen = today
+
+        # ---- company discovery loop --------------------------------------
+        # This is what aggregators are actually for. Any aggregator posting
+        # that scores well means the COMPANY is worth watching directly —
+        # their ATS board is authoritative, immediate, and has no 24h
+        # aggregator lag. Check the `discovered` table weekly and promote
+        # the good ones into `boards`.
+        threshold = settings["discovery_threshold"]
+        known = {c["slug"].lower() for c in companies}
+        known |= {c.get("name", "").lower() for c in companies}
+        for job in candidates:
+            if job.source in sources.ATS_FETCHERS or job.score < threshold:
+                continue
+            if job.company.lower() in known:
+                continue
+            db.upsert_discovered(conn, job.company, job.company_slug,
+                                  job.score, job.url, job.title, today)
+
+        top = conn.execute(
+            "SELECT company, hits, best_score FROM discovered ORDER BY best_score DESC LIMIT 5"
+        ).fetchall()
+        if top:
+            print("\ncompanies worth adding as a board (see `discovered` table):")
+            for row in top:
+                print(f"  {row['best_score']:>4.1f}  {row['company']}  ({row['hits']} good posting(s))")
+
+        # Authoritative write for scored candidates first, then stamp every
+        # raw fetched uid (including cross-board merge aliases) as seen —
+        # IGNORE won't clobber the real data just written.
+        db.insert_postings(conn, [asdict(j) for j in candidates], replace=True)
+        db.mark_seen_stubs(conn, fetched, today)
+
+        retain_days = settings["retain_days"]
+        board_rows = db.get_board(conn, retain_days, today)
+        board = [Job(**{k: v for k, v in r.items() if k in Job.__annotations__})
+                 for r in board_rows]
+
+        finished_at = datetime.now(timezone.utc).isoformat()
+        counts = {"fetched": len(fetched), "new": len(fresh), "deduped": len(deduped),
+                  "passed_rules": len(passed), "ranked": len(shortlist), "scored": len(candidates)}
+        db.record_run(conn, started_at, finished_at, counts, cost)
+
+        OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        OUTPUT_PATH.write_text(render(board, settings, cost, len(companies), used_boards))
+        print(f"\nwrote {OUTPUT_PATH} ({len(board)} on board)")
         return 0
-
-    candidates = [Job(**{k: v for k, v in j.items() if k in Job.__annotations__})
-                  for j in shortlist]
-
-    cost = 0.0
-    if candidates:
-        print(f"\nscoring {len(candidates)} in batches of {cfg.get('batch_size', 15)}...")
-        candidates, cost = score_jobs(candidates, profile, cfg)
-        print(f"estimated cost: ${cost:.4f}")
-
-    today = date.today().isoformat()
-    for job in candidates:
-        job.first_seen = today
-
-    # ---- company discovery loop ------------------------------------------
-    # This is what aggregators are actually for. Any aggregator posting that
-    # scores well means the COMPANY is worth watching directly — their ATS
-    # board is authoritative, immediate, and has no 24h aggregator lag.
-    # Review this file weekly and promote the good ones into `companies:`.
-    discovered = state.get("discovered", {})
-    threshold = cfg.get("discovery_threshold", 7.0)
-    known = {c["slug"].lower() for c in cfg.get("companies", [])}
-    known |= {c.get("name", "").lower() for c in cfg.get("companies", [])}
-    for job in candidates:
-        if job.source in sources.ATS_FETCHERS or job.score < threshold:
-            continue
-        if job.company.lower() in known:
-            continue
-        entry = discovered.setdefault(job.company, {
-            "slug_hint": job.company_slug, "hits": 0, "best_score": 0, "example": ""})
-        entry["hits"] += 1
-        if job.score > entry["best_score"]:
-            entry["best_score"] = job.score
-            entry["example"] = f"{job.title} — {job.url}"
-        entry["last_seen"] = today
-    if discovered:
-        top = sorted(discovered.items(), key=lambda kv: -kv[1]["best_score"])[:5]
-        print("\ncompanies worth adding to `companies:` (see state/discovered.json):")
-        for name, meta in top:
-            print(f"  {meta['best_score']:>4.1f}  {name}  ({meta['hits']} good posting(s))")
-
-    board = [Job(**j) for j in state.get("board", [])]
-    board.extend(candidates)
-    cutoff = (date.today() - timedelta(days=cfg.get("retain_days", 21))).isoformat()
-    board = [j for j in board if j.first_seen >= cutoff]
-    for job in board:
-        job.description = ""   # only needed at scoring time
-
-    seen.update(j["uid"] for j in fetched)
-    save_state({"seen": sorted(seen), "board": [asdict(j) for j in board],
-                "discovered": discovered})
-
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(render(board, cfg, cost, len(cfg.get("companies", [])), used_boards))
-    print(f"\nwrote {OUTPUT_PATH} ({len(board)} on board)")
-    return 0
 
 
 if __name__ == "__main__":

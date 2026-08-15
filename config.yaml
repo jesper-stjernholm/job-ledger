@@ -1,3 +1,9 @@
+# NOTE: as of the SQLite port (phase 1 of SPEC-v2.md), this file is no longer
+# read at runtime — it was migrated once into state/job_agent.db via
+# migrate.py and is kept here only as historical reference / for rebuilding
+# the db from scratch if needed. Edit the database (or, later, the config UI)
+# to change live settings.
+
 site_title: Job Ledger
 
 # ===========================================================================
