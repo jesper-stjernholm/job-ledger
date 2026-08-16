@@ -109,7 +109,7 @@ def _clear_failures(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
-SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add"}
+SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import"}
 
 
 @app.middleware("http")
@@ -408,6 +408,18 @@ def boards_bulk_add(request: Request, companies: str = Form(...)):
     })
 
 
+def _check_admin_token(request: Request) -> JSONResponse | None:
+    """Returns an error JSONResponse if the bearer token is missing/wrong/
+    unconfigured, or None if it checks out. Shared by every /api/* route."""
+    expected = os.environ.get("ADMIN_API_TOKEN")
+    if not expected:
+        return JSONResponse({"error": "ADMIN_API_TOKEN not configured"}, status_code=503)
+    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if not provided or not hmac.compare_digest(provided, expected):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return None
+
+
 @app.post("/api/boards/bulk_add")
 async def api_boards_bulk_add(request: Request):
     """
@@ -419,13 +431,8 @@ async def api_boards_bulk_add(request: Request):
 
     Body: {"companies": [{"name": "...", "ats": "...", "slug": "..."}, ...]}
     """
-    expected = os.environ.get("ADMIN_API_TOKEN")
-    if not expected:
-        return JSONResponse({"error": "ADMIN_API_TOKEN not configured"}, status_code=503)
-
-    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
-    if not provided or not hmac.compare_digest(provided, expected):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if (err := _check_admin_token(request)) is not None:
+        return err
 
     body = await request.json()
     results = []
@@ -434,6 +441,40 @@ async def api_boards_bulk_add(request: Request):
         ok, message = _try_add_board(name, adapter.lower(), slug)
         results.append({"ok": ok, "message": message, "name": name})
     return JSONResponse({"results": results})
+
+
+@app.post("/api/config/import")
+async def api_config_import(request: Request):
+    """
+    Token-authenticated bulk import for roles/exclusions/keywords - same
+    rationale as /api/boards/bulk_add: the hosted db started empty on
+    purpose (no local-data migration), so this is how the operator's real
+    config gets there without retyping every row through the UI by hand.
+    Purely additive (INSERT, not replace) - safe to call once against an
+    empty table; re-running it would duplicate rows, so it isn't meant to
+    be idempotent across repeat calls.
+
+    Body: {"roles": ["term", ...],
+           "exclusions": [{"term": "...", "scope": "title"|"description"}, ...],
+           "keywords": [{"term": "...", "weight": 1.0}, ...]}
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    body = await request.json()
+    counts = {"roles": 0, "exclusions": 0, "keywords": 0}
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for term in body.get("roles", []):
+            db.add_role(conn, term)
+            counts["roles"] += 1
+        for e in body.get("exclusions", []):
+            db.add_exclusion(conn, e["term"], e.get("scope", "title"))
+            counts["exclusions"] += 1
+        for k in body.get("keywords", []):
+            db.add_keyword(conn, k["term"], float(k["weight"]))
+            counts["keywords"] += 1
+    return JSONResponse({"added": counts})
 
 
 @app.post("/boards/{board_id}/toggle")
