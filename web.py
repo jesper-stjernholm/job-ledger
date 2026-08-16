@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
 """
-Local Configuration + Boards UI, password-gated.
+Configuration + Boards UI, password-gated.
 
     APP_PASSWORD=your-password python web.py
     -> http://127.0.0.1:8000/
 
-The password is hashed (argon2) and stored in the db on first boot; once a
-hash exists, APP_PASSWORD is ignored on later boots. Session cookies are
-signed but NOT marked Secure by default, since this still runs over plain
-http on localhost — set REQUIRE_HTTPS=1 (and put a TLS-terminating proxy in
-front) before this is ever reachable from anywhere but your own machine.
+The password is hashed (argon2) and stored via db.set_auth() on first
+boot; once a hash exists, APP_PASSWORD is ignored on later boots. Session
+cookies are signed but NOT marked Secure unless REQUIRE_HTTPS=1 is set —
+turn that on (behind real TLS) before this is reachable from anywhere but
+your own machine or localhost.
+
+Runs its own daily scheduler in-process (see `_scheduler_loop` below)
+rather than relying on an external cron, so the web UI and the scoring
+run always agree on which database they're using — see the phase's plan
+for why that matters once this is hosted with a persistent volume shared
+by nothing else.
 """
+import asyncio
+import logging
 import os
 import secrets
+import subprocess
+import sys
 import time
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -32,6 +42,18 @@ import sources
 
 ROOT = Path(__file__).parent
 ph = PasswordHasher()
+
+# Without this, log.info() below is silently dropped (the root logger's
+# default level is WARNING) — which would make the scheduler's activity
+# invisible in a hosted platform's log viewer, exactly where it matters
+# most, since nobody's watching a local terminal there.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("web")
+
+# 06:00 UTC weekdays — the same schedule the retired daily.yml GitHub
+# Actions workflow used.
+SCHEDULE_HOUR_UTC = 6
+SCHEDULE_WEEKDAYS = {0, 1, 2, 3, 4}  # Monday-Friday
 
 # ------------------------------------------------------------- auth setup
 # Runs once at import time, before SessionMiddleware is attached, so the
@@ -389,5 +411,40 @@ def discovered_dismiss(company: str):
     return RedirectResponse("/discovered", status_code=303)
 
 
+# ------------------------------------------------------------- scheduler
+
+def _next_run_at(now: datetime) -> datetime:
+    candidate = now.replace(hour=SCHEDULE_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    while candidate.weekday() not in SCHEDULE_WEEKDAYS:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+async def _scheduler_loop():
+    while True:
+        now = datetime.now(timezone.utc)
+        target = _next_run_at(now)
+        sleep_seconds = (target - now).total_seconds()
+        log.info("scheduler: next agent.py run at %s UTC (sleeping %.0fs)", target, sleep_seconds)
+        await asyncio.sleep(sleep_seconds)
+        log.info("scheduler: starting agent.py")
+        try:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "agent.py")],
+                capture_output=True, text=True, env=os.environ.copy(),
+            )
+            log.info("scheduler: agent.py exited %s\n%s", result.returncode,
+                      result.stdout[-2000:] + result.stderr[-2000:])
+        except Exception:
+            log.exception("scheduler: agent.py run failed to launch")
+
+
+@app.on_event("startup")
+async def start_scheduler():
+    asyncio.create_task(_scheduler_loop())
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

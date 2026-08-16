@@ -10,12 +10,17 @@ polite_delay).
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-DB_PATH = ROOT / "state" / "job_agent.db"
+# STATE_DIR lets hosting decouple the persistent-volume mount point from
+# this repo's own layout (e.g. Railway) without changing local/CLI
+# behavior at all when unset.
+STATE_DIR = Path(os.environ["STATE_DIR"]) if os.environ.get("STATE_DIR") else ROOT / "state"
+DB_PATH = STATE_DIR / "job_agent.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -140,7 +145,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 # valid login cookie, regardless of the actual password. So both live in
 # their own gitignored file instead.
 
-AUTH_PATH = ROOT / "state" / "auth.local.json"
+AUTH_PATH = STATE_DIR / "auth.local.json"
 
 
 def get_auth() -> dict:

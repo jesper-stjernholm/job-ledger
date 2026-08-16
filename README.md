@@ -1,10 +1,12 @@
 # Job Ledger
 
 A daily job agent that watches company ATS boards, scores new postings against
-your profile, and publishes a small website.
+your profile, and shows you the results on a small password-gated website.
 
-Runs on GitHub Actions (free), publishes to GitHub Pages (free), and costs
-about **one cent a day** in API tokens.
+Config and state live in SQLite (`state/job_agent.db`), edited through the
+web UI (`web.py`) rather than by hand-editing YAML. Costs about **one cent a
+day** in API tokens. Can run entirely on your own machine, or be deployed
+(e.g. to Railway) so it's reachable from anywhere — see Setup below.
 
 ## How it stays cheap
 
@@ -34,31 +36,44 @@ model ever sees. The ranking stage decides *which* 25, and it's free.
 
 ## Setup
 
-**1. Create the repo.** Push these files to a new GitHub repository.
+### Option A: run it locally
 
-**2. Add two secrets** under Settings → Secrets and variables → Actions:
+No hosting, no account, nothing reachable but your own machine.
 
-- `ANTHROPIC_API_KEY` — from console.anthropic.com
-- `PROFILE` — your profile text (see below). Keeping it here rather than in
-  `config.yaml` means your CV never enters the repo.
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY="..."      # console.anthropic.com
+export PROFILE="$(cat profile.txt)" # your profile — gitignored, never committed
+export APP_PASSWORD="..."           # your choice, hashed on first boot
+python web.py
+```
 
-**3. Enable Pages** under Settings → Pages: source `Deploy from a branch`,
-branch `main`, folder `/docs`. Your board appears at
-`https://<user>.github.io/<repo>/`.
+Open `http://127.0.0.1:8000/`, log in, and use Configuration/Boards to set up
+your roles, keywords and company list. Trigger a real run with
+`python agent.py --max-cost 1.0` whenever you want fresh scores (a cap is
+optional but recommended — see `agent.py --help`); `web.py` also runs one
+itself at 06:00 UTC on weekdays while it's running.
 
-**4. Edit `config.yaml`** — the company list and the rules. Then run it by hand
-once from the Actions tab (`Run workflow`) before trusting the schedule.
+### Option B: deploy it (e.g. to Railway)
 
-### Privacy
+Same app, reachable from anywhere. You'll need to:
 
-GitHub Pages on a free account requires a **public** repo. The `PROFILE` secret
-keeps your CV out of it, and the page carries a `noindex` tag, but the URL is
-still guessable and the site does reveal that you're looking. If that matters:
+1. Create a Railway account and connect it to this GitHub repo.
+2. Attach a persistent volume (any mount path, e.g. `/data`) — the database
+   needs real disk, or it resets on every deploy and every run re-scores
+   everything, quietly multiplying cost.
+3. Set these environment variables in the Railway project:
+   - `STATE_DIR` — the volume's mount path (e.g. `/data`)
+   - `APP_PASSWORD` — your login password (hashed on first boot, then ignored)
+   - `ANTHROPIC_API_KEY`, `PROFILE` — same as local
+   - `REQUIRE_HTTPS=1` — Railway terminates real TLS at its edge, so the
+     session cookie can safely require it
+4. Deploy. `Procfile` tells Railway how to start it (`python web.py`).
 
-- GitHub Pro ($4/mo) enables Pages on private repos, or
-- point Cloudflare Pages at a private repo (free tier, supports private repos),
-  and put Cloudflare Access in front of it, or
-- drop the Pages step and just `git pull` and open `docs/index.html` locally.
+The hosted database starts empty — re-enter your roles/keywords/companies
+through the UI once it's live. Scheduling runs in-process (see `web.py`'s
+`_scheduler_loop`), so there's no separate cron service or shared-volume
+question to get wrong.
 
 ## Two kinds of source
 
@@ -167,18 +182,23 @@ before touching the prompt.
 ## Files
 
 ```
-agent.py                     pipeline: fetch, filter, score, render
-config.yaml                  companies, rules, thresholds, cost guards
-state/seen.json              dedup set + the live board (written by the run)
-docs/index.html              the published page (sample output committed)
-.github/workflows/daily.yml  06:00 UTC weekdays, plus manual trigger
+agent.py            pipeline: fetch, filter, score, render — CLI, --dry-run, --max-cost
+doctor.py           stage-by-stage diagnostic, no API calls, no writes
+web.py              the web UI: board, runs, configuration, boards, discovered
+db.py               SQLite schema + all reads/writes; state/job_agent.db is the db
+sources.py, rank.py fetchers and dedup/ranking — unchanged since v1
+migrate.py          one-time YAML/JSON -> SQLite migration (historical; already run)
+config.yaml         kept as historical reference only, no longer read at runtime
 ```
 
-`docs/index.html` currently holds a sample render with fake postings, so you can
-see the layout before wiring up your API key. The first real run overwrites it.
+`config.yaml` isn't live config any more — companies, rules, keywords and
+thresholds all live in `state/job_agent.db` and are edited through the web UI
+(`/config`, `/boards`) instead.
 
 ## Cost guard
 
-`max_scored_per_run` (default 40) caps a single run. If a company dumps 200
-openings one morning, you score 40 and pick the rest up over following days
-rather than paying for all of them at once.
+`max_to_model` (Configuration page, default 25) caps how many postings reach
+the model in one run — the ranking stage decides *which* ones, for free, so a
+company dumping 200 openings one morning still only costs you 25. Independently,
+`python agent.py --max-cost 1.0` caps actual USD spend for a single run,
+checked against real API usage between batches, not an estimate.
