@@ -109,7 +109,7 @@ def _clear_failures(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
-SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import"}
+SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import", "/api/status"}
 
 
 @app.middleware("http")
@@ -475,6 +475,36 @@ async def api_config_import(request: Request):
             db.add_keyword(conn, k["term"], float(k["weight"]))
             counts["keywords"] += 1
     return JSONResponse({"added": counts})
+
+
+@app.get("/api/status")
+async def api_status(request: Request):
+    """
+    Token-authenticated, read-only row counts across every table, plus
+    where this process thinks its database file actually lives. Exists
+    because every other /api/* route is write-only - there was no way to
+    verify hosted state without asking the operator to look at the UI and
+    report back. DB_PATH/exists() in the response is the key diagnostic
+    for "did this survive the last redeploy": if STATE_DIR isn't actually
+    pointing at the mounted volume, this process is writing to the
+    container's ephemeral filesystem and every redeploy starts fresh.
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    with db.connect() as conn:
+        db.init_schema(conn)
+        counts = {}
+        for t in ["settings", "roles", "exclusions", "keywords", "boards",
+                  "searches", "postings", "runs", "discovered"]:
+            counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        board_names = [b["name"] for b in db.list_boards(conn)]
+    return JSONResponse({
+        "counts": counts,
+        "board_names": board_names,
+        "db_path": str(db.DB_PATH),
+        "state_dir_env": os.environ.get("STATE_DIR") or "(unset - using local repo path)",
+    })
 
 
 @app.post("/boards/{board_id}/toggle")
