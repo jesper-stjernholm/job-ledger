@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Boards — Job Ledger{% endblock %}
+{% block h1 %}Boards{% endblock %}
+{% block content %}
+
+<h2 class="section">ATS companies</h2>
+<p class="hint">Authoritative, immediate — you have to know the company in advance.</p>
+{% if not companies %}
+<div class="empty">No companies yet. Add one below, or promote one from the discovered list.</div>
+{% else %}
+<table class="grid">
+  <tr><th>name</th><th>ats</th><th>slug</th><th>status</th><th></th></tr>
+  {% for b in companies %}
+  <tr>
+    <td>{{ b.name }}</td>
+    <td>{{ b.adapter }}</td>
+    <td>{{ b.base_url }}</td>
+    <td><span class="pill {{ 'on' if b.enabled else 'off' }}">{{ 'on' if b.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/boards/{{ b.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if b.enabled else 'enable' }}</button>
+      </form>
+      <form class="inline" method="post" action="/boards/{{ b.id }}/delete">
+        <button class="danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<form class="row-form" method="post" action="/boards/add">
+  <label>Company name<input type="text" name="name" placeholder="Linear" required></label>
+  <label>ATS
+    <select name="adapter">
+      <option value="greenhouse">Greenhouse</option>
+      <option value="lever">Lever</option>
+      <option value="ashby">Ashby</option>
+    </select>
+  </label>
+  <label>Slug<input type="text" name="slug" placeholder="linear" required></label>
+  <button type="submit">Test &amp; add</button>
+</form>
+<p class="hint">This calls the real API before saving — if the slug is wrong
+you'll see the error here and nothing gets added.</p>
+
+<h2 class="section">Aggregator searches</h2>
+<p class="hint">Broad discovery, 24h+ lag, duplicated across boards. You can
+enable or disable an existing search here. Adding a brand-new aggregator
+query isn't wired up in this UI yet — each board takes different
+parameters (Himalayas: seniority/worldwide/timezone; Remotive: category;
+RemoteOK: tags) and deserves its own form rather than a generic one; edit
+the <code>searches</code> table directly, or ask for it as a follow-up, if
+you need a new one before that's built.</p>
+{% if not searches %}
+<div class="empty">No aggregator searches configured.</div>
+{% else %}
+<table class="grid">
+  <tr><th>board</th><th>label</th><th>params</th><th>status</th><th></th></tr>
+  {% for s in searches %}
+  <tr>
+    <td>{{ s.board_adapter }}</td>
+    <td>{{ s.label }}</td>
+    <td style="font-family:'IBM Plex Mono',monospace; font-size:12px">{{ s.params }}</td>
+    <td><span class="pill {{ 'on' if s.enabled else 'off' }}">{{ 'on' if s.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/searches/{{ s.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if s.enabled else 'enable' }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% endblock %}

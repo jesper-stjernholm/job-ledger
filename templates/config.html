@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Configuration — Job Ledger{% endblock %}
+{% block h1 %}Configuration{% endblock %}
+{% block content %}
+
+<h2 class="section">Profile</h2>
+<p class="hint">What you want, not your CV — dealbreakers do more work than
+anything else here. {% if profile_env_set %}<strong>A PROFILE environment
+variable is currently set and overrides this field.</strong>{% endif %}</p>
+<form class="row-form" method="post" action="/config/settings" style="display:block">
+  <label style="width:100%">Profile text
+    <textarea name="profile_text" style="width:100%">{{ settings.profile_text }}</textarea>
+  </label>
+  <div style="margin-top:10px"><button type="submit">Save profile</button></div>
+</form>
+
+<h2 class="section">Thresholds</h2>
+<form class="settings-form" method="post" action="/config/settings">
+  <input type="hidden" name="profile_text" value="{{ settings.profile_text }}">
+  <label>Site title
+    <input type="text" name="site_title" value="{{ settings.site_title }}">
+  </label>
+  <label>Only show jobs scoring above
+    <input type="number" step="0.5" name="display_threshold" value="{{ settings.display_threshold }}">
+  </label>
+  <label>Highlight jobs scoring above
+    <input type="number" step="0.5" name="highlight_threshold" value="{{ settings.highlight_threshold }}">
+  </label>
+  <label>Minimum affinity to reach the model
+    <input type="number" step="0.5" name="min_affinity" value="{{ settings.min_affinity }}">
+  </label>
+  <label>Score at most this many jobs per day
+    <input type="number" step="1" name="max_to_model" value="{{ settings.max_to_model }}">
+  </label>
+  <label>Description length sent to the model (chars)
+    <input type="number" step="100" name="description_chars" value="{{ settings.description_chars }}">
+  </label>
+  <label>Keep postings on the board for (days)
+    <input type="number" step="1" name="retain_days" value="{{ settings.retain_days }}">
+  </label>
+  <label>Discovery threshold (score to flag a company)
+    <input type="number" step="0.5" name="discovery_threshold" value="{{ settings.discovery_threshold }}">
+  </label>
+  <label>Batch size (postings per model call)
+    <input type="number" step="1" name="batch_size" value="{{ settings.batch_size }}">
+  </label>
+  <div style="align-self:flex-end"><button type="submit">Save thresholds</button></div>
+</form>
+
+<h2 class="section">Roles &amp; titles</h2>
+<p class="hint">A posting's title must match one of these to be considered.</p>
+<table class="grid">
+  <tr><th>term</th><th>status</th><th></th></tr>
+  {% for r in roles %}
+  <tr>
+    <td>{{ r.term }}</td>
+    <td><span class="pill {{ 'on' if r.enabled else 'off' }}">{{ 'on' if r.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/roles/{{ r.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if r.enabled else 'enable' }}</button>
+      </form>
+      <form class="inline" method="post" action="/roles/{{ r.id }}/delete">
+        <button class="danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<form class="row-form" method="post" action="/roles/add">
+  <label>New role term<input type="text" name="term" placeholder="Product Designer" required></label>
+  <button type="submit">Add role</button>
+</form>
+
+<h2 class="section">Exclusions</h2>
+<p class="hint">Titles or descriptions matching these get rejected.</p>
+<table class="grid">
+  <tr><th>term</th><th>matches against</th><th>status</th><th></th></tr>
+  {% for e in exclusions %}
+  <tr>
+    <td>{{ e.term }}</td>
+    <td>{{ e.scope }}</td>
+    <td><span class="pill {{ 'on' if e.enabled else 'off' }}">{{ 'on' if e.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/exclusions/{{ e.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if e.enabled else 'enable' }}</button>
+      </form>
+      <form class="inline" method="post" action="/exclusions/{{ e.id }}/delete">
+        <button class="danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<form class="row-form" method="post" action="/exclusions/add">
+  <label>New exclusion term<input type="text" name="term" placeholder="Junior" required></label>
+  <label>Matches against
+    <select name="scope">
+      <option value="title">title</option>
+      <option value="description">description</option>
+    </select>
+  </label>
+  <button type="submit">Add exclusion</button>
+</form>
+
+<h2 class="section">Keywords</h2>
+<p class="hint">Weighted match terms — a title hit counts {{ '%g'|format(settings.title_boost) }}x a body hit.
+Negative weights push things down (e.g. "no crypto").</p>
+<table class="grid">
+  <tr><th>term</th><th>weight</th><th>status</th><th></th></tr>
+  {% for k in keywords %}
+  <tr>
+    <td>{{ k.term }}</td>
+    <td class="num">{{ k.weight }}</td>
+    <td><span class="pill {{ 'on' if k.enabled else 'off' }}">{{ 'on' if k.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/keywords/{{ k.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if k.enabled else 'enable' }}</button>
+      </form>
+      <form class="inline" method="post" action="/keywords/{{ k.id }}/delete">
+        <button class="danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<form class="row-form" method="post" action="/keywords/add">
+  <label>New keyword term<input type="text" name="term" placeholder="figma" required></label>
+  <label>Weight<input type="number" step="0.5" name="weight" value="1" required></label>
+  <button type="submit">Add keyword</button>
+</form>
+
+{% endblock %}

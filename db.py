@@ -293,3 +293,121 @@ def upsert_discovered(conn: sqlite3.Connection, company: str, slug_hint: str,
             "VALUES (?, ?, 1, ?, ?, ?)",
             (company, slug_hint, best_score, f"{title} — {example_url}", today_iso),
         )
+
+
+# ------------------------------------------------------------- UI: settings
+
+def update_settings(conn: sqlite3.Connection, **fields) -> None:
+    if not fields:
+        return
+    cols = ", ".join(f"{k} = :{k}" for k in fields)
+    conn.execute(f"UPDATE settings SET {cols} WHERE id = 1", fields)
+
+
+# --------------------------------------------------------- UI: roles/exclusions/keywords
+
+def list_roles(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM roles ORDER BY id").fetchall()
+
+
+def add_role(conn: sqlite3.Connection, term: str) -> None:
+    conn.execute("INSERT INTO roles (term, enabled) VALUES (?, 1)", (term,))
+
+
+def toggle_role(conn: sqlite3.Connection, role_id: int) -> None:
+    conn.execute("UPDATE roles SET enabled = 1 - enabled WHERE id = ?", (role_id,))
+
+
+def delete_role(conn: sqlite3.Connection, role_id: int) -> None:
+    conn.execute("DELETE FROM roles WHERE id = ?", (role_id,))
+
+
+def list_exclusions(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM exclusions ORDER BY scope, id").fetchall()
+
+
+def add_exclusion(conn: sqlite3.Connection, term: str, scope: str) -> None:
+    conn.execute(
+        "INSERT INTO exclusions (term, scope, enabled) VALUES (?, ?, 1)", (term, scope)
+    )
+
+
+def toggle_exclusion(conn: sqlite3.Connection, exclusion_id: int) -> None:
+    conn.execute("UPDATE exclusions SET enabled = 1 - enabled WHERE id = ?", (exclusion_id,))
+
+
+def delete_exclusion(conn: sqlite3.Connection, exclusion_id: int) -> None:
+    conn.execute("DELETE FROM exclusions WHERE id = ?", (exclusion_id,))
+
+
+def list_keywords(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM keywords ORDER BY id").fetchall()
+
+
+def add_keyword(conn: sqlite3.Connection, term: str, weight: float) -> None:
+    conn.execute(
+        "INSERT INTO keywords (term, weight, enabled) VALUES (?, ?, 1)", (term, weight)
+    )
+
+
+def toggle_keyword(conn: sqlite3.Connection, keyword_id: int) -> None:
+    conn.execute("UPDATE keywords SET enabled = 1 - enabled WHERE id = ?", (keyword_id,))
+
+
+def delete_keyword(conn: sqlite3.Connection, keyword_id: int) -> None:
+    conn.execute("DELETE FROM keywords WHERE id = ?", (keyword_id,))
+
+
+# ------------------------------------------------------------- UI: boards/searches
+
+def list_boards(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM boards ORDER BY kind, adapter, name").fetchall()
+
+
+def add_board(conn: sqlite3.Connection, name: str, adapter: str, base_url: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO boards (name, kind, adapter, base_url, enabled) VALUES (?, 'builtin', ?, ?, 1)",
+        (name, adapter, base_url),
+    )
+    return cur.lastrowid
+
+
+def toggle_board(conn: sqlite3.Connection, board_id: int) -> None:
+    conn.execute("UPDATE boards SET enabled = 1 - enabled WHERE id = ?", (board_id,))
+
+
+def delete_board(conn: sqlite3.Connection, board_id: int) -> None:
+    conn.execute("DELETE FROM searches WHERE board_id = ?", (board_id,))
+    conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
+
+
+def list_searches(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    rows = conn.execute(
+        """SELECT s.*, b.name AS board_name, b.adapter AS board_adapter
+           FROM searches s JOIN boards b ON s.board_id = b.id
+           ORDER BY b.adapter, s.id"""
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["params"] = json.loads(d["params"])
+        out.append(d)
+    return out
+
+
+def toggle_search(conn: sqlite3.Connection, search_id: int) -> None:
+    conn.execute("UPDATE searches SET enabled = 1 - enabled WHERE id = ?", (search_id,))
+
+
+# ----------------------------------------------------------------------- UI: runs
+
+def get_runs(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["counts"] = json.loads(d["counts"])
+        out.append(d)
+    return out

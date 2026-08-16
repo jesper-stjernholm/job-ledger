@@ -135,8 +135,18 @@ def parse_scores(text: str) -> list[dict]:
         raise
 
 
-def score_jobs(jobs: list[Job], profile: str, cfg: dict) -> tuple[list[Job], float]:
-    """One API call per batch. Returns scored jobs and estimated USD cost."""
+def score_jobs(jobs: list[Job], profile: str, cfg: dict,
+                max_cost: float | None = None) -> tuple[list[Job], float]:
+    """
+    One API call per batch. Returns scored jobs and actual USD cost.
+
+    `max_cost`, if set, is checked before each batch against cost actually
+    spent so far (from `resp.usage` on prior batches, not an estimate) —
+    if the next batch would start after the cap is already reached, it and
+    every remaining batch are skipped. Jobs in skipped batches keep their
+    default score (0), so they simply won't clear display_threshold rather
+    than silently vanishing.
+    """
     from anthropic import Anthropic
 
     client = Anthropic()
@@ -145,6 +155,11 @@ def score_jobs(jobs: list[Job], profile: str, cfg: dict) -> tuple[list[Job], flo
     cost = 0.0
 
     for start in range(0, len(jobs), batch_size):
+        if max_cost is not None and cost >= max_cost:
+            skipped = len(jobs) - start
+            print(f"  ! stopping: reached max cost cap (${cost:.4f} >= ${max_cost:.2f}); "
+                  f"{skipped} posting(s) left unscored", file=sys.stderr)
+            break
         chunk = jobs[start:start + batch_size]
         prompt = TEMPLATE.format(profile=profile, postings=build_batch(chunk, desc_chars))
         resp = client.messages.create(
@@ -200,6 +215,14 @@ h1{
   color:var(--soft); margin-top:10px;
   display:flex; flex-wrap:wrap; gap:6px 18px;
 }
+
+.nav{
+  display:flex; gap:18px; padding:14px 0 0;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+}
+.nav a{color:var(--soft); text-decoration:none; padding-bottom:2px; border-bottom:2px solid transparent}
+.nav a:hover,.nav a[aria-current="page"]{color:var(--ink); border-color:var(--strong)}
 
 .day{
   font-family:"IBM Plex Mono",ui-monospace,monospace;
@@ -291,6 +314,7 @@ PAGE = """<!doctype html>
     <span>{watched} boards watched</span>
   </div>
 </header>
+{nav}
 {body}
 <footer>Scored by {model} &middot; {cost} this run &middot; postings expire after {ttl} days{credits}</footer>
 </div>
@@ -303,7 +327,7 @@ def esc(text: str) -> str:
 
 
 def render(board: list[Job], cfg: dict, cost: float, watched: int,
-           used_boards: set | None = None) -> str:
+           used_boards: set | None = None, nav_html: str = "") -> str:
     today = date.today().isoformat()
     threshold = cfg.get("display_threshold", 5.0)
     shown = [j for j in board if j.score >= threshold]
@@ -361,6 +385,7 @@ def render(board: list[Job], cfg: dict, cost: float, watched: int,
         model=MODEL,
         cost=f"${cost:.4f}" if cost else "no API calls",
         ttl=cfg.get("retain_days", 21),
+        nav=nav_html,
         body=body,
     )
 
@@ -371,6 +396,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true",
                         help="fetch, dedup and rank only; no API call, no state written")
+    parser.add_argument("--max-cost", type=float, default=None,
+                        help="stop scoring once actual spend this run reaches this many USD")
     args = parser.parse_args()
 
     started_at = datetime.now(timezone.utc).isoformat()
@@ -435,9 +462,10 @@ def main() -> int:
 
         cost = 0.0
         if candidates:
-            print(f"\nscoring {len(candidates)} in batches of {settings['batch_size']}...")
-            candidates, cost = score_jobs(candidates, profile, settings)
-            print(f"estimated cost: ${cost:.4f}")
+            cost_note = f" (capped at ${args.max_cost:.2f})" if args.max_cost is not None else ""
+            print(f"\nscoring {len(candidates)} in batches of {settings['batch_size']}{cost_note}...")
+            candidates, cost = score_jobs(candidates, profile, settings, max_cost=args.max_cost)
+            print(f"actual cost: ${cost:.4f}")
 
         today = date.today().isoformat()
         for job in candidates:

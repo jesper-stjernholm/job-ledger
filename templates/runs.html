@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Runs — Job Ledger{% endblock %}
+{% block h1 %}Runs{% endblock %}
+{% block content %}
+<p class="hint">Every run's funnel. A stage highlighted in orange dropped to
+zero — that's usually the thing worth looking at, not "no jobs today."</p>
+
+{% if not runs %}
+<div class="empty">No runs recorded yet. Run <code>python agent.py</code> once.</div>
+{% else %}
+<table class="grid">
+  <tr>
+    <th>when</th><th>fetched</th><th>new</th><th>deduped</th>
+    <th>passed rules</th><th>ranked</th><th>scored</th><th>cost</th><th>error</th>
+  </tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.started_at[:16].replace('T', ' ') }}</td>
+    {% for key in ['fetched', 'new', 'deduped', 'passed_rules', 'ranked', 'scored'] %}
+    <td class="num {{ 'zero' if r.counts.get(key, 0) == 0 else '' }}">{{ r.counts.get(key, '—') }}</td>
+    {% endfor %}
+    <td class="num">${{ "%.4f"|format(r.cost_usd) }}</td>
+    <td>{{ r.error or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
