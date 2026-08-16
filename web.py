@@ -1,27 +1,54 @@
 #!/usr/bin/env python3
 """
-Local Configuration + Boards UI. No authentication — binds to 127.0.0.1
-only, meant for your own machine. Add auth (see SPEC-v2.md section 4)
-before this is ever reachable from anywhere else.
+Local Configuration + Boards UI, password-gated.
 
-    python web.py
+    APP_PASSWORD=your-password python web.py
     -> http://127.0.0.1:8000/
+
+The password is hashed (argon2) and stored in the db on first boot; once a
+hash exists, APP_PASSWORD is ignored on later boots. Session cookies are
+signed but NOT marked Secure by default, since this still runs over plain
+http on localhost — set REQUIRE_HTTPS=1 (and put a TLS-terminating proxy in
+front) before this is ever reachable from anywhere but your own machine.
 """
 import os
+import secrets
+import time
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
 import uvicorn
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 import agent
 import db
 import sources
 
 ROOT = Path(__file__).parent
+ph = PasswordHasher()
+
+# ------------------------------------------------------------- auth setup
+# Runs once at import time, before SessionMiddleware is attached, so the
+# signing secret is stable across restarts (persisted in state/auth.local.json
+# — gitignored, NOT job_agent.db, since that file is committed to a public
+# repo and a leaked signing secret would let anyone forge a login cookie)
+# rather than regenerated, which would silently log everyone out on every
+# restart.
+with db.connect() as _conn:
+    db.init_schema(_conn)
+_auth = db.get_auth()
+_session_secret = _auth.get("session_secret") or secrets.token_hex(32)
+if not _auth.get("session_secret"):
+    db.set_auth(session_secret=_session_secret)
+if not _auth.get("password_hash") and os.environ.get("APP_PASSWORD"):
+    db.set_auth(password_hash=ph.hash(os.environ["APP_PASSWORD"]))
+
 app = FastAPI()
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 templates.env.globals["css"] = agent.CSS
@@ -32,8 +59,88 @@ NAV = (
     '<a href="/runs">Runs</a>'
     '<a href="/config">Configuration</a>'
     '<a href="/boards">Boards</a>'
+    '<a href="/logout" style="margin-left:auto">Log out</a>'
     "</div>"
 )
+
+# --------------------------------------------------------- login rate limit
+
+MAX_ATTEMPTS = 5
+WINDOW_SECONDS = 300
+_login_attempts: dict[str, list[float]] = {}
+
+
+def _rate_limited(ip: str) -> bool:
+    now = time.time()
+    recent = [t for t in _login_attempts.get(ip, []) if now - t < WINDOW_SECONDS]
+    _login_attempts[ip] = recent
+    return len(recent) >= MAX_ATTEMPTS
+
+
+def _record_failure(ip: str) -> None:
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+
+def _clear_failures(ip: str) -> None:
+    _login_attempts.pop(ip, None)
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    if request.url.path not in ("/login", "/logout") and not request.session.get("authenticated"):
+        return RedirectResponse("/login", status_code=303)
+    return await call_next(request)
+
+
+# Starlette's add_middleware() prepends to the stack, and the LAST-added
+# entry ends up outermost (runs first on the way in). SessionMiddleware
+# must run before require_login's dispatch touches request.session, so it
+# has to be added AFTER require_login is registered above, not before.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_session_secret,
+    same_site="lax",
+    https_only=os.environ.get("REQUIRE_HTTPS") == "1",
+    max_age=60 * 60 * 24 * 14,  # 14 days
+)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    configured = bool(db.get_auth().get("password_hash"))
+    return templates.TemplateResponse(request, "login.html", {
+        "configured": configured, **flash_ctx(request),
+    })
+
+
+@app.post("/login")
+def login_submit(request: Request, password: str = Form(...)):
+    ip = request.client.host if request.client else "unknown"
+    password_hash = db.get_auth().get("password_hash", "")
+
+    if not password_hash:
+        return redirect_with_flash(
+            "/login", "No password configured yet — set APP_PASSWORD and restart.", error=True)
+
+    if _rate_limited(ip):
+        return redirect_with_flash(
+            "/login", "Too many failed attempts. Wait a few minutes and try again.", error=True)
+
+    try:
+        ph.verify(password_hash, password)
+    except VerifyMismatchError:
+        _record_failure(ip)
+        return redirect_with_flash("/login", "Wrong password.", error=True)
+
+    _clear_failures(ip)
+    request.session["authenticated"] = True
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
 
 
 def flash_ctx(request: Request) -> dict:

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Log in — Job Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>{{ css|safe }}
+body{display:flex; align-items:center; justify-content:center}
+.card{
+  width:100%; max-width:340px; background:var(--card); border:1px solid var(--rule);
+  border-radius:2px; padding:32px;
+}
+.card h1{font-size:40px; margin-bottom:20px}
+.card input[type=password]{
+  width:100%; font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:15px;
+  border:1px solid var(--rule); border-radius:2px; padding:10px 12px;
+  margin-bottom:14px; background:#fff; color:var(--ink);
+}
+.card button{
+  width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  letter-spacing:.08em; text-transform:uppercase; cursor:pointer;
+  border:1px solid var(--ink); border-radius:2px; background:var(--ink);
+  color:var(--card); padding:10px 14px;
+}
+.card button:hover{background:var(--strong); border-color:var(--strong)}
+.flash{
+  border:1px solid var(--fresh); background:#fbe9de; color:var(--fresh);
+  border-radius:2px; padding:10px 14px; margin-bottom:16px; font-size:14px;
+}
+.setup-note{color:var(--soft); font-size:13.5px; line-height:1.5}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Job Ledger</h1>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if configured %}
+  <form method="post" action="/login">
+    <input type="password" name="password" placeholder="Password" autofocus required>
+    <button type="submit">Log in</button>
+  </form>
+  {% else %}
+  <p class="setup-note">No password is set up yet. Set the
+    <code>APP_PASSWORD</code> environment variable and restart the app to
+    configure one.</p>
+  {% endif %}
+</div>
+</body>
+</html>

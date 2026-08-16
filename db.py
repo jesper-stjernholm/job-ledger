@@ -131,6 +131,31 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)")
 
 
+# --------------------------------------------------------------------- auth
+#
+# password_hash and session_secret deliberately do NOT live in job_agent.db.
+# That db is committed to a public repo (same reason profile_text is kept
+# out of it — see the phase-1 plan). session_secret in particular is a
+# signing key: anyone who could read it from git history could forge a
+# valid login cookie, regardless of the actual password. So both live in
+# their own gitignored file instead.
+
+AUTH_PATH = ROOT / "state" / "auth.local.json"
+
+
+def get_auth() -> dict:
+    if AUTH_PATH.exists():
+        return json.loads(AUTH_PATH.read_text())
+    return {"password_hash": "", "session_secret": ""}
+
+
+def set_auth(**fields) -> None:
+    auth = get_auth()
+    auth.update(fields)
+    AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    AUTH_PATH.write_text(json.dumps(auth, indent=1))
+
+
 # --------------------------------------------------------------------- reads
 
 def get_settings(conn: sqlite3.Connection) -> dict:

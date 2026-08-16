@@ -85,6 +85,7 @@ button.danger:hover{background:var(--fresh); color:#fff}
     <a href="/runs" aria-current="{{ 'page' if active == 'runs' else 'false' }}">Runs</a>
     <a href="/config" aria-current="{{ 'page' if active == 'config' else 'false' }}">Configuration</a>
     <a href="/boards" aria-current="{{ 'page' if active == 'boards' else 'false' }}">Boards</a>
+    <a href="/logout" style="margin-left:auto">Log out</a>
   </div>
 </header>
 {% if flash %}<div class="flash {{ 'error' if flash_error else '' }}">{{ flash }}</div>{% endif %}

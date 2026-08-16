@@ -5,3 +5,6 @@ __pycache__/
 # Your profile is uploaded as an encrypted GitHub secret, never committed.
 # This repo is PUBLIC — do not remove this line.
 profile.txt
+# Web UI login password hash + session-signing secret. This repo is
+# PUBLIC — a leaked session_secret lets anyone forge a valid login cookie.
+state/auth.local.json
