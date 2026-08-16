@@ -44,6 +44,26 @@
 <p class="hint">This calls the real API before saving — if the slug is wrong
 you'll see the error here and nothing gets added.</p>
 
+<h2 class="section">Add several at once</h2>
+<p class="hint">One company per line: <code>name, ats, slug</code> — ats is
+one of <code>greenhouse</code>, <code>lever</code>, <code>ashby</code>. Each
+line gets the same real test-fetch as the single form above; nothing that
+fails gets added.</p>
+{% if bulk_results %}
+<table class="grid">
+  <tr><th>result</th></tr>
+  {% for r in bulk_results %}
+  <tr><td class="{{ 'zero' if not r.ok else '' }}">{{ '✓' if r.ok else '✗' }} {{ r.message }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+<form class="row-form" method="post" action="/boards/bulk_add" style="display:block">
+  <label style="width:100%">Companies
+    <textarea name="companies" style="width:100%" placeholder="Linear, ashby, linear&#10;Monzo, greenhouse, monzo&#10;Plaid, lever, plaid"></textarea>
+  </label>
+  <div style="margin-top:10px"><button type="submit">Test &amp; add all</button></div>
+</form>
+
 <h2 class="section">Aggregator searches</h2>
 <p class="hint">Broad discovery, 24h+ lag, duplicated across boards. You can
 enable or disable an existing search here. Adding a brand-new aggregator

@@ -18,6 +18,7 @@ for why that matters once this is hosted with a persistent volume shared
 by nothing else.
 """
 import asyncio
+import hmac
 import logging
 import os
 import secrets
@@ -32,7 +33,7 @@ import uvicorn
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -108,9 +109,12 @@ def _clear_failures(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
+SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add"}
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
-    if request.url.path not in ("/login", "/logout") and not request.session.get("authenticated"):
+    if request.url.path not in SESSION_EXEMPT_PATHS and not request.session.get("authenticated"):
         return RedirectResponse("/login", status_code=303)
     return await call_next(request)
 
@@ -339,36 +343,97 @@ def boards_page(request: Request):
     })
 
 
-@app.post("/boards/add")
-def boards_add(name: str = Form(...), adapter: str = Form(...), slug: str = Form(...)):
+def _try_add_board(name: str, adapter: str, slug: str) -> tuple[bool, str]:
     """
     Test-fetches with the real, hardcoded ATS adapter before saving. This is
     NOT the phase-4 arbitrary-URL board tester — adapter and URL template are
     both fixed and already trusted (sources.ATS_FETCHERS), so there's no SSRF
-    surface here, just "does this slug actually resolve."
+    surface here, just "does this slug actually resolve." Shared by the
+    single-company and bulk-add routes.
     """
     name, slug = name.strip(), slug.strip()
     fetcher = sources.ATS_FETCHERS.get(adapter)
     if not fetcher:
-        return redirect_with_flash("/boards", f"Unknown ATS '{adapter}'.", error=True)
+        return False, f"{name}: unknown ATS '{adapter}'"
     try:
         found = fetcher(slug, name)
     except Exception as exc:
-        return redirect_with_flash(
-            "/boards", f"Could not fetch {name} ({adapter}/{slug}): {exc}", error=True)
+        return False, f"{name} ({adapter}/{slug}): {exc}"
     if not found:
-        return redirect_with_flash(
-            "/boards",
-            f"{name} ({adapter}/{slug}) is reachable but returned 0 postings — check the slug.",
-            error=True)
+        return False, f"{name} ({adapter}/{slug}): reachable but 0 postings — check the slug"
 
     with db.connect() as conn:
         db.init_schema(conn)
         db.add_board(conn, name, adapter, slug)
         db.delete_discovered(conn, name)  # no-op if it wasn't a discovered row
     example = found[0].get("title", "")
-    return redirect_with_flash(
-        "/boards", f'Added {name} — found {len(found)} posting(s), e.g. "{example}".')
+    return True, f'{name}: added — found {len(found)} posting(s), e.g. "{example}"'
+
+
+@app.post("/boards/add")
+def boards_add(name: str = Form(...), adapter: str = Form(...), slug: str = Form(...)):
+    ok, message = _try_add_board(name, adapter, slug)
+    return redirect_with_flash("/boards", message, error=not ok)
+
+
+@app.post("/boards/bulk_add")
+def boards_bulk_add(request: Request, companies: str = Form(...)):
+    """
+    One line per company: `name, ats, slug`. Processes every line
+    synchronously (each is one real test-fetch, same as the single-company
+    form) and renders the results inline rather than a single flash message,
+    since a batch has more than one outcome to show.
+    """
+    results = []
+    for line in companies.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) != 3:
+            results.append({"ok": False, "message": f"'{line}': expected \"name, ats, slug\""})
+            continue
+        name, adapter, slug = parts
+        ok, message = _try_add_board(name, adapter.lower(), slug)
+        results.append({"ok": ok, "message": message})
+
+    with db.connect() as conn:
+        db.init_schema(conn)
+        all_boards = db.list_boards(conn)
+        companies_list = [b for b in all_boards if b["adapter"] in ("greenhouse", "lever", "ashby")]
+        searches = db.list_searches(conn)
+    return templates.TemplateResponse(request, "boards.html", {
+        "active": "boards", "companies": companies_list, "searches": searches,
+        "prefill_name": "", "prefill_slug": "", "bulk_results": results,
+    })
+
+
+@app.post("/api/boards/bulk_add")
+async def api_boards_bulk_add(request: Request):
+    """
+    Token-authenticated equivalent of the /boards/bulk_add form, for
+    automation (e.g. Claude adding researched companies directly) without
+    ever touching the session-cookie login. Exempted from require_login
+    above; auth here is a separate bearer token, checked in constant time.
+    Fails closed if ADMIN_API_TOKEN isn't configured at all.
+
+    Body: {"companies": [{"name": "...", "ats": "...", "slug": "..."}, ...]}
+    """
+    expected = os.environ.get("ADMIN_API_TOKEN")
+    if not expected:
+        return JSONResponse({"error": "ADMIN_API_TOKEN not configured"}, status_code=503)
+
+    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if not provided or not hmac.compare_digest(provided, expected):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    body = await request.json()
+    results = []
+    for c in body.get("companies", []):
+        name, adapter, slug = c.get("name", ""), c.get("ats", ""), c.get("slug", "")
+        ok, message = _try_add_board(name, adapter.lower(), slug)
+        results.append({"ok": ok, "message": message, "name": name})
+    return JSONResponse({"results": results})
 
 
 @app.post("/boards/{board_id}/toggle")
