@@ -80,7 +80,20 @@ def fetch_greenhouse(slug: str, company: str) -> list[dict]:
 
 
 def fetch_lever(slug: str, company: str) -> list[dict]:
-    data = _get(f"https://api.lever.co/v0/postings/{slug}?mode=json")
+    """
+    Lever shards some accounts onto a region-specific host — the public
+    board for these is jobs.eu.lever.co/{slug} rather than jobs.lever.co/
+    {slug}, and the API mirrors that split. Try the default host first
+    (covers the large majority), fall back to the EU host on a 404 rather
+    than silently missing every EU-sharded company.
+    """
+    try:
+        data = _get(f"https://api.lever.co/v0/postings/{slug}?mode=json")
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            data = _get(f"https://api.eu.lever.co/v0/postings/{slug}?mode=json")
+        else:
+            raise
     out = []
     for j in data:
         cats = j.get("categories") or {}
