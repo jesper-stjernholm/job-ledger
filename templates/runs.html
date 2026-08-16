@@ -5,6 +5,15 @@
 <p class="hint">Every run's funnel. A stage highlighted in orange dropped to
 zero — that's usually the thing worth looking at, not "no jobs today."</p>
 
+<form class="row-form" method="post" action="/run/now">
+  <label>Max cost (USD)<input type="number" step="0.5" min="0" name="max_cost" value="1.0"></label>
+  <button type="submit">Run now</button>
+</form>
+<p class="hint">Runs in the background against your current boards, roles,
+keywords and profile. Real API calls, capped at the amount above (checked
+between batches against actual spend, not an estimate). This page won't
+update live — refresh it in a minute or two.</p>
+
 {% if not runs %}
 <div class="empty">No runs recorded yet. Run <code>python agent.py</code> once.</div>
 {% else %}

@@ -478,6 +478,28 @@ def discovered_dismiss(company: str):
 
 # ------------------------------------------------------------- scheduler
 
+_run_lock = asyncio.Lock()
+
+
+async def _run_agent(max_cost: float | None, label: str) -> None:
+    if _run_lock.locked():
+        log.info("%s: skipped, a run is already in progress", label)
+        return
+    async with _run_lock:
+        log.info("%s: starting agent.py%s", label, f" (--max-cost {max_cost})" if max_cost else "")
+        try:
+            args = [sys.executable, str(ROOT / "agent.py")]
+            if max_cost is not None:
+                args += ["--max-cost", str(max_cost)]
+            result = await asyncio.to_thread(
+                subprocess.run, args, capture_output=True, text=True, env=os.environ.copy(),
+            )
+            log.info("%s: agent.py exited %s\n%s", label, result.returncode,
+                      result.stdout[-2000:] + result.stderr[-2000:])
+        except Exception:
+            log.exception("%s: agent.py run failed to launch", label)
+
+
 def _next_run_at(now: datetime) -> datetime:
     candidate = now.replace(hour=SCHEDULE_HOUR_UTC, minute=0, second=0, microsecond=0)
     if candidate <= now:
@@ -494,21 +516,20 @@ async def _scheduler_loop():
         sleep_seconds = (target - now).total_seconds()
         log.info("scheduler: next agent.py run at %s UTC (sleeping %.0fs)", target, sleep_seconds)
         await asyncio.sleep(sleep_seconds)
-        log.info("scheduler: starting agent.py")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "agent.py")],
-                capture_output=True, text=True, env=os.environ.copy(),
-            )
-            log.info("scheduler: agent.py exited %s\n%s", result.returncode,
-                      result.stdout[-2000:] + result.stderr[-2000:])
-        except Exception:
-            log.exception("scheduler: agent.py run failed to launch")
+        await _run_agent(max_cost=None, label="scheduler")
 
 
 @app.on_event("startup")
 async def start_scheduler():
     asyncio.create_task(_scheduler_loop())
+
+
+@app.post("/run/now")
+async def run_now(request: Request, max_cost: float = Form(1.0)):
+    if _run_lock.locked():
+        return redirect_with_flash("/runs", "A run is already in progress — check back shortly.", error=True)
+    asyncio.create_task(_run_agent(max_cost=max_cost if max_cost > 0 else None, label="manual"))
+    return redirect_with_flash("/runs", f"Run started (capped at ${max_cost:.2f}). Refresh in a minute or two to see it here.")
 
 
 if __name__ == "__main__":
