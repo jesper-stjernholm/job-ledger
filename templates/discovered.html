@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Discovered — Job Ledger{% endblock %}
+{% block h1 %}Discovered{% endblock %}
+{% block content %}
+<p class="hint">Companies whose postings scored well on an aggregator but
+aren't on a board yet. Their ATS board is authoritative and immediate —
+promoting a good one means you see its roles the day they post, not a day
+later through a cache.</p>
+
+{% if not rows %}
+<div class="empty">Nothing discovered yet. This fills in as scored postings
+clear your discovery threshold on aggregator boards.</div>
+{% else %}
+<table class="grid">
+  <tr><th>company</th><th>hits</th><th>best score</th><th>example</th><th>last seen</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.company }}</td>
+    <td class="num">{{ r.hits }}</td>
+    <td class="num">{{ "%.1f"|format(r.best_score) }}</td>
+    <td>{{ r.example_url }}</td>
+    <td>{{ r.last_seen or '' }}</td>
+    <td>
+      <a href="/boards?prefill_name={{ r.company|urlencode }}&prefill_slug={{ r.slug_hint|urlencode }}">
+        <button class="ghost" type="button">add as board</button>
+      </a>
+      <form class="inline" method="post" action="/discovered/{{ r.company|urlencode }}/dismiss">
+        <button class="danger" type="submit">dismiss</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

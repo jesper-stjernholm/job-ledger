@@ -59,6 +59,7 @@ NAV = (
     '<a href="/runs">Runs</a>'
     '<a href="/config">Configuration</a>'
     '<a href="/boards">Boards</a>'
+    '<a href="/discovered">Discovered</a>'
     '<a href="/logout" style="margin-left:auto">Log out</a>'
     "</div>"
 )
@@ -309,7 +310,10 @@ def boards_page(request: Request):
         searches = db.list_searches(conn)
     return templates.TemplateResponse(request, "boards.html", {
         "active": "boards",
-        "companies": companies, "searches": searches, **flash_ctx(request),
+        "companies": companies, "searches": searches,
+        "prefill_name": request.query_params.get("prefill_name", ""),
+        "prefill_slug": request.query_params.get("prefill_slug", ""),
+        **flash_ctx(request),
     })
 
 
@@ -339,6 +343,7 @@ def boards_add(name: str = Form(...), adapter: str = Form(...), slug: str = Form
     with db.connect() as conn:
         db.init_schema(conn)
         db.add_board(conn, name, adapter, slug)
+        db.delete_discovered(conn, name)  # no-op if it wasn't a discovered row
     example = found[0].get("title", "")
     return redirect_with_flash(
         "/boards", f'Added {name} — found {len(found)} posting(s), e.g. "{example}".')
@@ -363,6 +368,25 @@ def searches_toggle(search_id: int):
     with db.connect() as conn:
         db.toggle_search(conn, search_id)
     return RedirectResponse("/boards", status_code=303)
+
+
+# -------------------------------------------------------------- discovered
+
+@app.get("/discovered", response_class=HTMLResponse)
+def discovered_page(request: Request):
+    with db.connect() as conn:
+        db.init_schema(conn)
+        rows = db.list_discovered(conn)
+    return templates.TemplateResponse(request, "discovered.html", {
+        "active": "discovered", "rows": rows, **flash_ctx(request),
+    })
+
+
+@app.post("/discovered/{company}/dismiss")
+def discovered_dismiss(company: str):
+    with db.connect() as conn:
+        db.delete_discovered(conn, company)
+    return RedirectResponse("/discovered", status_code=303)
 
 
 if __name__ == "__main__":

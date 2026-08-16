@@ -30,7 +30,7 @@
 {% endif %}
 
 <form class="row-form" method="post" action="/boards/add">
-  <label>Company name<input type="text" name="name" placeholder="Linear" required></label>
+  <label>Company name<input type="text" name="name" placeholder="Linear" value="{{ prefill_name }}" required></label>
   <label>ATS
     <select name="adapter">
       <option value="greenhouse">Greenhouse</option>
@@ -38,7 +38,7 @@
       <option value="ashby">Ashby</option>
     </select>
   </label>
-  <label>Slug<input type="text" name="slug" placeholder="linear" required></label>
+  <label>Slug<input type="text" name="slug" placeholder="linear" value="{{ prefill_slug }}" required></label>
   <button type="submit">Test &amp; add</button>
 </form>
 <p class="hint">This calls the real API before saving — if the slug is wrong

@@ -320,6 +320,14 @@ def upsert_discovered(conn: sqlite3.Connection, company: str, slug_hint: str,
         )
 
 
+def list_discovered(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM discovered ORDER BY best_score DESC").fetchall()
+
+
+def delete_discovered(conn: sqlite3.Connection, company: str) -> None:
+    conn.execute("DELETE FROM discovered WHERE company = ?", (company,))
+
+
 # ------------------------------------------------------------- UI: settings
 
 def update_settings(conn: sqlite3.Connection, **fields) -> None:
