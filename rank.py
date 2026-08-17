@@ -58,7 +58,7 @@ def merge(jobs: list[dict]) -> list[dict]:
     for group in buckets.values():
         # Prefer ATS over aggregator, then the richest description.
         group.sort(key=lambda j: (
-            j.get("source") in ("greenhouse", "lever", "ashby", "teamtailor"),
+            j.get("source") in ("greenhouse", "lever", "ashby", "teamtailor", "nordea"),
             len(j.get("description", "")),
         ), reverse=True)
         best = dict(group[0])

@@ -211,7 +211,7 @@ def get_boards_and_searches(conn: sqlite3.Connection):
     board_by_id = {b["id"]: b for b in boards}
 
     for b in boards:
-        if b["adapter"] in ("greenhouse", "lever", "ashby", "teamtailor"):
+        if b["adapter"] in ("greenhouse", "lever", "ashby", "teamtailor", "nordea"):
             companies.append({"name": b["name"], "ats": b["adapter"], "slug": b["base_url"]})
 
     rows = conn.execute("SELECT * FROM searches WHERE enabled = 1").fetchall()
@@ -262,7 +262,7 @@ def _board_id_for(conn: sqlite3.Connection, source: str, uid: str) -> int | None
     (only the himalayas fetcher does). Aggregator postings match on adapter
     alone: migration creates exactly one boards row per aggregator adapter.
     """
-    if source in ("greenhouse", "lever", "ashby", "teamtailor"):
+    if source in ("greenhouse", "lever", "ashby", "teamtailor", "nordea"):
         parts = uid.split(":", 2)
         slug = parts[1] if len(parts) > 1 else ""
         if slug:

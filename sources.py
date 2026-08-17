@@ -206,6 +206,44 @@ def fetch_teamtailor(slug: str, company: str) -> list[dict]:
     return out
 
 
+def fetch_nordea(slug: str, company: str) -> list[dict]:
+    """
+    One-off, not a shared platform like the other four - Nordea's own
+    Drupal-based careers site exposes a real, public, unauthenticated JSON
+    endpoint (found via the browser's own network requests, not published
+    API docs), but it's genuinely undocumented and showed real flakiness
+    during testing: a small items_per_page returned zero results for no
+    apparent reason, while 200 reliably returned all ~88 current postings.
+    Fixed at 200/page 0 (no pagination) since that comfortably covers
+    today's volume - if Nordea's headcount need ever exceeds 200 open
+    roles at once, this would silently truncate. `slug` is accepted only
+    for interface consistency with ATS_FETCHERS' calling convention; there
+    is no per-company parameter, so it's ignored.
+
+    No description field is returned by this endpoint at all (title,
+    location, category, dates only) - a second request per posting would
+    be needed for real description text, which isn't worth the request
+    volume for one company. Rank/score still work, just with less context
+    than postings from richer sources.
+    """
+    data = _get("https://www.nordea.com/en/api/jobs-list",
+                params={"_format": "json", "items_per_page": 200, "page": 0, "search": ""})
+    out = []
+    for j in data.get("results", []):
+        out.append({
+            "uid": f"nordea:{j.get('nid')}",
+            "company": company,
+            "title": (j.get("title") or "").strip(),
+            "location": (j.get("location_name") or "").strip(),
+            "url": j.get("url", ""),
+            "excerpt": j.get("category_name", "") or "",
+            "description": j.get("category_name", "") or "",
+            "comp": "",
+            "source": "nordea",
+        })
+    return out
+
+
 # ======================================================= Aggregators (discovery)
 
 def fetch_himalayas(query: dict) -> list[dict]:
@@ -304,7 +342,7 @@ def fetch_remoteok(query: dict) -> list[dict]:
 
 
 ATS_FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby,
-                "teamtailor": fetch_teamtailor}
+                "teamtailor": fetch_teamtailor, "nordea": fetch_nordea}
 BOARD_FETCHERS = {"himalayas": fetch_himalayas, "remotive": fetch_remotive,
                   "remoteok": fetch_remoteok}
 

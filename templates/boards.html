@@ -37,6 +37,7 @@
       <option value="lever">Lever</option>
       <option value="ashby">Ashby</option>
       <option value="teamtailor">Teamtailor</option>
+      <option value="nordea">Nordea (one-off)</option>
     </select>
   </label>
   <label>Slug<input type="text" name="slug" placeholder="linear" value="{{ prefill_slug }}" required></label>
@@ -46,7 +47,9 @@
 you'll see the error here and nothing gets added. For Teamtailor, "slug"
 means the career site's full domain instead of a short id — e.g.
 <code>jobs.company.com</code> or <code>company.teamtailor.com</code>,
-whatever the company's actual careers URL is.</p>
+whatever the company's actual careers URL is. "Nordea" is a one-off
+company-specific fetcher, not a shared platform — put anything in slug,
+it's ignored.</p>
 
 <h2 class="section">Add several at once</h2>
 <p class="hint">One company per line: <code>name, ats, slug</code> — ats is
