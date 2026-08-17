@@ -482,13 +482,14 @@ async def api_config_import(request: Request):
     Body: {"roles": ["term", ...],
            "locations": ["term", ...],
            "exclusions": [{"term": "...", "scope": "title"|"description"}, ...],
-           "keywords": [{"term": "...", "weight": 1.0}, ...]}
+           "keywords": [{"term": "...", "weight": 1.0}, ...],
+           "searches": [{"board": "himalayas", "label": "...", "params": {...}}, ...]}
     """
     if (err := _check_admin_token(request)) is not None:
         return err
 
     body = await request.json()
-    counts = {"roles": 0, "locations": 0, "exclusions": 0, "keywords": 0}
+    counts = {"roles": 0, "locations": 0, "exclusions": 0, "keywords": 0, "searches": 0}
     with db.connect() as conn:
         db.init_schema(conn)
         for term in body.get("roles", []):
@@ -503,6 +504,9 @@ async def api_config_import(request: Request):
         for k in body.get("keywords", []):
             db.add_keyword(conn, k["term"], float(k["weight"]))
             counts["keywords"] += 1
+        for s in body.get("searches", []):
+            db.add_search(conn, s["board"], s.get("label", ""), s.get("params", {}))
+            counts["searches"] += 1
     return JSONResponse({"added": counts})
 
 

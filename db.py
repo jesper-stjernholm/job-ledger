@@ -469,6 +469,38 @@ def toggle_search(conn: sqlite3.Connection, search_id: int) -> None:
     conn.execute("UPDATE searches SET enabled = 1 - enabled WHERE id = ?", (search_id,))
 
 
+# Documentation only, matching migrate.py's AGGREGATOR_URLS - not used at
+# fetch time (sources.py hardcodes these), just makes a new boards row
+# legible if someone inspects the db directly.
+_AGGREGATOR_URLS = {
+    "himalayas": "https://himalayas.app/jobs/api/search",
+    "remotive": "https://remotive.com/api/remote-jobs",
+    "remoteok": "https://remoteok.com/api",
+}
+
+
+def add_search(conn: sqlite3.Connection, adapter: str, label: str, params: dict) -> None:
+    """
+    Adds a search under the given aggregator adapter, creating that
+    adapter's boards row first if this is the first search for it -
+    mirrors migrate.py's migrate_boards_and_searches(), as the ongoing
+    equivalent for adding searches one at a time after initial migration.
+    """
+    row = conn.execute("SELECT id FROM boards WHERE adapter = ?", (adapter,)).fetchone()
+    if row:
+        board_id = row["id"]
+    else:
+        cur = conn.execute(
+            "INSERT INTO boards (name, kind, adapter, base_url, enabled) VALUES (?, 'builtin', ?, ?, 1)",
+            (adapter.capitalize(), adapter, _AGGREGATOR_URLS.get(adapter, "")),
+        )
+        board_id = cur.lastrowid
+    conn.execute(
+        "INSERT INTO searches (board_id, label, params, enabled) VALUES (?, ?, ?, 1)",
+        (board_id, label, json.dumps(params)),
+    )
+
+
 # ----------------------------------------------------------------------- UI: runs
 
 def get_runs(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
