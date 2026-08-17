@@ -3,7 +3,7 @@ Job sources.
 
 Two kinds, and the difference matters:
 
-  ATS boards (greenhouse, lever, ashby)
+  ATS boards (greenhouse, lever, ashby, teamtailor)
       Authoritative, immediate, low volume. A posting appears here first.
       You must know the company in advance.
 
@@ -145,6 +145,67 @@ def fetch_ashby(slug: str, company: str) -> list[dict]:
     return out
 
 
+# Teamtailor's jobLocation.address.addressCountry is an ISO-3166 alpha-2
+# code ("DK"), not a word - a location_include pattern like "denmark" or
+# "europe" would silently never match it. Resolve to a full name and, for
+# EU/EEA members, append "Europe" too, so it matches the same way a hand-
+# written "Copenhagen, Denmark, Europe" string from another source would.
+_EU_EEA_COUNTRIES = {
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+    "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+    "SI", "ES", "SE", "IS", "LI", "NO",
+}
+_COUNTRY_NAMES = {
+    "DK": "Denmark", "SE": "Sweden", "NO": "Norway", "FI": "Finland",
+    "IS": "Iceland", "DE": "Germany", "FR": "France", "NL": "Netherlands",
+    "GB": "United Kingdom", "IE": "Ireland", "ES": "Spain", "IT": "Italy",
+    "PT": "Portugal", "PL": "Poland", "AT": "Austria", "BE": "Belgium",
+    "CH": "Switzerland", "AX": "Aland Islands", "US": "United States",
+    "CA": "Canada",
+}
+
+
+def _teamtailor_location(jp: dict) -> str:
+    places = []
+    for place in jp.get("jobLocation") or []:
+        addr = place.get("address") or {}
+        code = addr.get("addressCountry") or ""
+        country = _COUNTRY_NAMES.get(code, code)
+        parts = [addr.get("addressLocality"), country]
+        if code in _EU_EEA_COUNTRIES:
+            parts.append("Europe")
+        places.append(", ".join(p for p in parts if p))
+    return "; ".join(p for p in places if p)
+
+
+def fetch_teamtailor(slug: str, company: str) -> list[dict]:
+    """
+    Every Teamtailor career site (both *.teamtailor.com subdomains and
+    custom domains like jobs.company.com) publishes a public, unauthenticated
+    JSON Feed at /jobs.json - no API key, same shape regardless of domain.
+    Unlike the other three adapters, `slug` here is the career site's full
+    hostname, not a short identifier, since Teamtailor sites can live on
+    either kind of domain.
+    """
+    data = _get(f"https://{slug}/jobs.json")
+    out = []
+    for item in data.get("items", []):
+        jp = item.get("_jobposting") or {}
+        desc = strip_html(item.get("content_html"))
+        out.append({
+            "uid": f"teamtailor:{slug}:{item.get('id')}",
+            "company": company,
+            "title": (item.get("title") or "").strip(),
+            "location": _teamtailor_location(jp),
+            "url": item.get("url", ""),
+            "excerpt": desc[:400],
+            "description": desc,
+            "comp": "",
+            "source": "teamtailor",
+        })
+    return out
+
+
 # ======================================================= Aggregators (discovery)
 
 def fetch_himalayas(query: dict) -> list[dict]:
@@ -242,7 +303,8 @@ def fetch_remoteok(query: dict) -> list[dict]:
     return out
 
 
-ATS_FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby}
+ATS_FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby,
+                "teamtailor": fetch_teamtailor}
 BOARD_FETCHERS = {"himalayas": fetch_himalayas, "remotive": fetch_remotive,
                   "remoteok": fetch_remoteok}
 

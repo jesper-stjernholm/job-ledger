@@ -197,7 +197,7 @@ def board_page():
         cost = last_run["cost_usd"] if last_run else 0.0
         all_boards = db.list_boards(conn)
 
-    watched = sum(1 for b in all_boards if b["enabled"] and b["adapter"] in ("greenhouse", "lever", "ashby"))
+    watched = sum(1 for b in all_boards if b["enabled"] and b["adapter"] in ("greenhouse", "lever", "ashby", "teamtailor"))
     used_boards = {b["adapter"] for b in all_boards if b["enabled"] and b["adapter"] in sources.ATTRIBUTION}
     html = agent.render(board, settings, cost, watched, used_boards, nav_html=NAV)
     return HTMLResponse(html)
@@ -356,7 +356,7 @@ def boards_page(request: Request):
     with db.connect() as conn:
         db.init_schema(conn)
         all_boards = db.list_boards(conn)
-        companies = [b for b in all_boards if b["adapter"] in ("greenhouse", "lever", "ashby")]
+        companies = [b for b in all_boards if b["adapter"] in ("greenhouse", "lever", "ashby", "teamtailor")]
         searches = db.list_searches(conn)
     return templates.TemplateResponse(request, "boards.html", {
         "active": "boards",
@@ -424,7 +424,7 @@ def boards_bulk_add(request: Request, companies: str = Form(...)):
     with db.connect() as conn:
         db.init_schema(conn)
         all_boards = db.list_boards(conn)
-        companies_list = [b for b in all_boards if b["adapter"] in ("greenhouse", "lever", "ashby")]
+        companies_list = [b for b in all_boards if b["adapter"] in ("greenhouse", "lever", "ashby", "teamtailor")]
         searches = db.list_searches(conn)
     return templates.TemplateResponse(request, "boards.html", {
         "active": "boards", "companies": companies_list, "searches": searches,

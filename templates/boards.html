@@ -36,19 +36,24 @@
       <option value="greenhouse">Greenhouse</option>
       <option value="lever">Lever</option>
       <option value="ashby">Ashby</option>
+      <option value="teamtailor">Teamtailor</option>
     </select>
   </label>
   <label>Slug<input type="text" name="slug" placeholder="linear" value="{{ prefill_slug }}" required></label>
   <button type="submit">Test &amp; add</button>
 </form>
 <p class="hint">This calls the real API before saving — if the slug is wrong
-you'll see the error here and nothing gets added.</p>
+you'll see the error here and nothing gets added. For Teamtailor, "slug"
+means the career site's full domain instead of a short id — e.g.
+<code>jobs.company.com</code> or <code>company.teamtailor.com</code>,
+whatever the company's actual careers URL is.</p>
 
 <h2 class="section">Add several at once</h2>
 <p class="hint">One company per line: <code>name, ats, slug</code> — ats is
-one of <code>greenhouse</code>, <code>lever</code>, <code>ashby</code>. Each
-line gets the same real test-fetch as the single form above; nothing that
-fails gets added.</p>
+one of <code>greenhouse</code>, <code>lever</code>, <code>ashby</code>,
+<code>teamtailor</code> (whose "slug" is a full domain, not a short id — see
+above). Each line gets the same real test-fetch as the single form above;
+nothing that fails gets added.</p>
 {% if bulk_results %}
 <table class="grid">
   <tr><th>result</th></tr>
