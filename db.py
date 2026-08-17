@@ -469,6 +469,22 @@ def toggle_search(conn: sqlite3.Connection, search_id: int) -> None:
     conn.execute("UPDATE searches SET enabled = 1 - enabled WHERE id = ?", (search_id,))
 
 
+def delete_search_by_label(conn: sqlite3.Connection, adapter: str, labels: list[str]) -> list[str]:
+    """Deletes searches matching (adapter, label). Returns the labels actually
+    found and deleted, so a caller can tell a typo'd label from a real one."""
+    deleted = []
+    for label in labels:
+        row = conn.execute(
+            """SELECT s.id FROM searches s JOIN boards b ON s.board_id = b.id
+               WHERE b.adapter = ? AND s.label = ?""",
+            (adapter, label),
+        ).fetchone()
+        if row:
+            conn.execute("DELETE FROM searches WHERE id = ?", (row["id"],))
+            deleted.append(label)
+    return deleted
+
+
 # Documentation only, matching migrate.py's AGGREGATOR_URLS - not used at
 # fetch time (sources.py hardcodes these), just makes a new boards row
 # legible if someone inspects the db directly.

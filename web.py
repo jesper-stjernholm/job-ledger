@@ -110,7 +110,7 @@ def _clear_failures(ip: str) -> None:
 
 
 SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import",
-                        "/api/status", "/api/boards/delete_by_name"}
+                        "/api/status", "/api/boards/delete_by_name", "/api/searches/delete_by_label"}
 
 
 @app.middleware("http")
@@ -560,6 +560,26 @@ async def api_boards_delete_by_name(request: Request):
             if b["name"] in names:
                 db.delete_board(conn, b["id"])
                 deleted.append(b["name"])
+    return JSONResponse({"deleted": deleted})
+
+
+@app.post("/api/searches/delete_by_label")
+async def api_searches_delete_by_label(request: Request):
+    """
+    Token-authenticated removal of aggregator searches by (board, label) -
+    same rationale as /api/boards/delete_by_name: no UI delete button
+    exists for searches (only enable/disable), and adding/removing search
+    strategy is exactly the kind of thing worth doing without a session.
+
+    Body: {"board": "himalayas", "labels": ["product-design", "design-lead"]}
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    body = await request.json()
+    with db.connect() as conn:
+        db.init_schema(conn)
+        deleted = db.delete_search_by_label(conn, body["board"], body.get("labels", []))
     return JSONResponse({"deleted": deleted})
 
 
