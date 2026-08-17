@@ -109,7 +109,8 @@ def _clear_failures(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
-SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import", "/api/status"}
+SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import",
+                        "/api/status", "/api/boards/delete_by_name"}
 
 
 @app.middleware("http")
@@ -533,6 +534,29 @@ async def api_status(request: Request):
         "db_path": str(db.DB_PATH),
         "state_dir_env": os.environ.get("STATE_DIR") or "(unset - using local repo path)",
     })
+
+
+@app.post("/api/boards/delete_by_name")
+async def api_boards_delete_by_name(request: Request):
+    """
+    Token-authenticated cleanup for test/misnamed entries added via the
+    other /api/boards/* routes - deleting a board otherwise requires a
+    session-authenticated UI click, which defeats the point of automating
+    the rest of this. Body: {"names": ["Nordea Test Probe", ...]}
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    body = await request.json()
+    names = set(body.get("names", []))
+    deleted = []
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for b in db.list_boards(conn):
+            if b["name"] in names:
+                db.delete_board(conn, b["id"])
+                deleted.append(b["name"])
+    return JSONResponse({"deleted": deleted})
 
 
 @app.post("/boards/{board_id}/toggle")
