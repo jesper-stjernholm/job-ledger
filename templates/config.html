@@ -71,6 +71,35 @@ variable is currently set and overrides this field.</strong>{% endif %}</p>
   <button type="submit">Add role</button>
 </form>
 
+<h2 class="section">Locations</h2>
+<p class="hint">Optional. If any locations are listed here, a posting's
+location must match one of them to be considered — leave empty to apply no
+location filter at all (the default, since boards write locations very
+differently: some give city strings, some give country/continent lists).
+Turn this on deliberately, and check the Runs page afterward in case a
+stage drops to zero.</p>
+<table class="grid">
+  <tr><th>term</th><th>status</th><th></th></tr>
+  {% for l in locations %}
+  <tr>
+    <td>{{ l.term }}</td>
+    <td><span class="pill {{ 'on' if l.enabled else 'off' }}">{{ 'on' if l.enabled else 'off' }}</span></td>
+    <td>
+      <form class="inline" method="post" action="/locations/{{ l.id }}/toggle">
+        <button class="ghost" type="submit">{{ 'disable' if l.enabled else 'enable' }}</button>
+      </form>
+      <form class="inline" method="post" action="/locations/{{ l.id }}/delete">
+        <button class="danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<form class="row-form" method="post" action="/locations/add">
+  <label>New location term<input type="text" name="term" placeholder="Europe" required></label>
+  <button type="submit">Add location</button>
+</form>
+
 <h2 class="section">Exclusions</h2>
 <p class="hint">Titles or descriptions matching these get rejected.</p>
 <table class="grid">

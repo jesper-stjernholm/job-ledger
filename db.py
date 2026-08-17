@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS roles (
     enabled INTEGER NOT NULL DEFAULT 1
 );
 
+-- Allow-list for rules.location_include (agent.py's rule_filter). Empty by
+-- default, matching gotcha #2's warning: a location filter is opt-in, not
+-- assumed, since ATS boards emit city strings and aggregators emit
+-- country/continent strings, and a too-tight filter silently drops
+-- everything.
+CREATE TABLE IF NOT EXISTS locations (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    term    TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS exclusions (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     term    TEXT NOT NULL,
@@ -170,6 +181,11 @@ def get_settings(conn: sqlite3.Connection) -> dict:
 
 def get_roles(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute("SELECT term FROM roles WHERE enabled = 1").fetchall()
+    return [r["term"] for r in rows]
+
+
+def get_locations(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute("SELECT term FROM locations WHERE enabled = 1").fetchall()
     return [r["term"] for r in rows]
 
 
@@ -358,6 +374,22 @@ def toggle_role(conn: sqlite3.Connection, role_id: int) -> None:
 
 def delete_role(conn: sqlite3.Connection, role_id: int) -> None:
     conn.execute("DELETE FROM roles WHERE id = ?", (role_id,))
+
+
+def list_locations(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM locations ORDER BY id").fetchall()
+
+
+def add_location(conn: sqlite3.Connection, term: str) -> None:
+    conn.execute("INSERT INTO locations (term, enabled) VALUES (?, 1)", (term,))
+
+
+def toggle_location(conn: sqlite3.Connection, location_id: int) -> None:
+    conn.execute("UPDATE locations SET enabled = 1 - enabled WHERE id = ?", (location_id,))
+
+
+def delete_location(conn: sqlite3.Connection, location_id: int) -> None:
+    conn.execute("DELETE FROM locations WHERE id = ?", (location_id,))
 
 
 def list_exclusions(conn: sqlite3.Connection) -> list[sqlite3.Row]:

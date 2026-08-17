@@ -223,11 +223,13 @@ def config_page(request: Request):
         db.init_schema(conn)
         settings = db.get_settings(conn)
         roles = db.list_roles(conn)
+        locations = db.list_locations(conn)
         exclusions = db.list_exclusions(conn)
         keywords = db.list_keywords(conn)
     return templates.TemplateResponse(request, "config.html", {
         "active": "config",
-        "settings": settings, "roles": roles, "exclusions": exclusions, "keywords": keywords,
+        "settings": settings, "roles": roles, "locations": locations,
+        "exclusions": exclusions, "keywords": keywords,
         "profile_env_set": bool(os.environ.get("PROFILE")),
         **flash_ctx(request),
     })
@@ -278,6 +280,28 @@ def roles_toggle(role_id: int):
 def roles_delete(role_id: int):
     with db.connect() as conn:
         db.delete_role(conn, role_id)
+    return RedirectResponse("/config", status_code=303)
+
+
+@app.post("/locations/add")
+def locations_add(term: str = Form(...)):
+    with db.connect() as conn:
+        db.init_schema(conn)
+        db.add_location(conn, term.strip())
+    return redirect_with_flash("/config", f'Added location "{term.strip()}".')
+
+
+@app.post("/locations/{location_id}/toggle")
+def locations_toggle(location_id: int):
+    with db.connect() as conn:
+        db.toggle_location(conn, location_id)
+    return RedirectResponse("/config", status_code=303)
+
+
+@app.post("/locations/{location_id}/delete")
+def locations_delete(location_id: int):
+    with db.connect() as conn:
+        db.delete_location(conn, location_id)
     return RedirectResponse("/config", status_code=303)
 
 
@@ -455,6 +479,7 @@ async def api_config_import(request: Request):
     be idempotent across repeat calls.
 
     Body: {"roles": ["term", ...],
+           "locations": ["term", ...],
            "exclusions": [{"term": "...", "scope": "title"|"description"}, ...],
            "keywords": [{"term": "...", "weight": 1.0}, ...]}
     """
@@ -462,12 +487,15 @@ async def api_config_import(request: Request):
         return err
 
     body = await request.json()
-    counts = {"roles": 0, "exclusions": 0, "keywords": 0}
+    counts = {"roles": 0, "locations": 0, "exclusions": 0, "keywords": 0}
     with db.connect() as conn:
         db.init_schema(conn)
         for term in body.get("roles", []):
             db.add_role(conn, term)
             counts["roles"] += 1
+        for term in body.get("locations", []):
+            db.add_location(conn, term)
+            counts["locations"] += 1
         for e in body.get("exclusions", []):
             db.add_exclusion(conn, e["term"], e.get("scope", "title"))
             counts["exclusions"] += 1
@@ -495,7 +523,7 @@ async def api_status(request: Request):
     with db.connect() as conn:
         db.init_schema(conn)
         counts = {}
-        for t in ["settings", "roles", "exclusions", "keywords", "boards",
+        for t in ["settings", "roles", "locations", "exclusions", "keywords", "boards",
                   "searches", "postings", "runs", "discovered"]:
             counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
         board_names = [b["name"] for b in db.list_boards(conn)]

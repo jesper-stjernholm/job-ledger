@@ -39,6 +39,7 @@ def main() -> int:
         rules = {
             "title_include": db.get_roles(conn),
             "title_exclude": db.get_exclusions(conn, "title"),
+            "location_include": db.get_locations(conn),
             "description_exclude": db.get_exclusions(conn, "description"),
         }
 
