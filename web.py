@@ -110,7 +110,8 @@ def _clear_failures(ip: str) -> None:
 
 
 SESSION_EXEMPT_PATHS = {"/login", "/logout", "/api/boards/bulk_add", "/api/config/import",
-                        "/api/status", "/api/boards/delete_by_name", "/api/searches/delete_by_label"}
+                        "/api/status", "/api/boards/delete_by_name", "/api/searches/delete_by_label",
+                        "/api/config/delete", "/api/config/settings"}
 
 
 @app.middleware("http")
@@ -596,6 +597,51 @@ async def api_searches_delete_by_label(request: Request):
         db.init_schema(conn)
         deleted = db.delete_search_by_label(conn, body["board"], body.get("labels", []))
     return JSONResponse({"deleted": deleted})
+
+
+@app.post("/api/config/delete")
+async def api_config_delete(request: Request):
+    """
+    Token-authenticated removal from the four term-keyed config tables,
+    by exact term match - the counterpart to /api/config/import's add
+    side. There's no "edit" concept for these; correcting an over-broad
+    term means deleting the old one and adding the fixed replacement.
+
+    Body: {"roles": ["term", ...], "locations": [...], "exclusions": [...],
+           "keywords": [...]}
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    body = await request.json()
+    deleted = {}
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for table in ("roles", "locations", "exclusions", "keywords"):
+            if table in body:
+                deleted[table] = db.delete_by_term(conn, table, body[table])
+    return JSONResponse({"deleted": deleted})
+
+
+@app.post("/api/config/settings")
+async def api_config_settings(request: Request):
+    """
+    Token-authenticated equivalent of the session-authenticated
+    /config/settings form - same fields, same partial-update semantics
+    (only keys present in the body get changed).
+    """
+    if (err := _check_admin_token(request)) is not None:
+        return err
+
+    body = await request.json()
+    allowed = {"profile_text", "site_title", "display_threshold", "highlight_threshold",
+               "min_affinity", "max_to_model", "description_chars", "retain_days",
+               "discovery_threshold", "batch_size", "title_boost", "polite_delay"}
+    fields = {k: v for k, v in body.items() if k in allowed}
+    with db.connect() as conn:
+        db.init_schema(conn)
+        db.update_settings(conn, **fields)
+    return JSONResponse({"updated": fields})
 
 
 @app.post("/boards/{board_id}/toggle")

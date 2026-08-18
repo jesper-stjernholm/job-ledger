@@ -428,6 +428,25 @@ def delete_keyword(conn: sqlite3.Connection, keyword_id: int) -> None:
     conn.execute("DELETE FROM keywords WHERE id = ?", (keyword_id,))
 
 
+def delete_by_term(conn: sqlite3.Connection, table: str, terms: list[str]) -> list[str]:
+    """
+    Deletes rows matching an exact term, for the four term-keyed tables
+    (roles/locations/exclusions/keywords). Same rationale as
+    delete_search_by_label: there's no UI delete-by-content, and admin-API
+    callers only know the term they want gone, not its row id. `table` is
+    never user input (always a literal in the calling route), so this
+    isn't building SQL from a request body.
+    """
+    assert table in ("roles", "locations", "exclusions", "keywords")
+    deleted = []
+    for term in terms:
+        row = conn.execute(f"SELECT id FROM {table} WHERE term = ?", (term,)).fetchone()
+        if row:
+            conn.execute(f"DELETE FROM {table} WHERE id = ?", (row["id"],))
+            deleted.append(term)
+    return deleted
+
+
 # ------------------------------------------------------------- UI: boards/searches
 
 def list_boards(conn: sqlite3.Connection) -> list[sqlite3.Row]:
