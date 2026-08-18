@@ -532,11 +532,17 @@ async def api_status(request: Request):
                   "searches", "postings", "runs", "discovered"]:
             counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
         board_names = [b["name"] for b in db.list_boards(conn)]
+        recent_runs = db.get_runs(conn, limit=10)
+        top_scores = conn.execute(
+            "SELECT title, company, score, first_seen FROM postings ORDER BY first_seen DESC, score DESC LIMIT 10"
+        ).fetchall()
     return JSONResponse({
         "counts": counts,
         "board_names": board_names,
         "db_path": str(db.DB_PATH),
         "state_dir_env": os.environ.get("STATE_DIR") or "(unset - using local repo path)",
+        "recent_runs": recent_runs,
+        "top_recent_postings": [dict(r) for r in top_scores],
     })
 
 
