@@ -534,8 +534,13 @@ async def api_status(request: Request):
         board_names = [b["name"] for b in db.list_boards(conn)]
         recent_runs = db.get_runs(conn, limit=10)
         top_scores = conn.execute(
-            "SELECT title, company, score, first_seen FROM postings ORDER BY first_seen DESC, score DESC LIMIT 10"
+            "SELECT title, company, score, affinity, first_seen FROM postings "
+            "ORDER BY first_seen DESC, score DESC LIMIT 15"
         ).fetchall()
+        settings = db.get_settings(conn)
+        roles = [dict(r) for r in db.list_roles(conn)]
+        locations = [dict(r) for r in db.list_locations(conn)]
+        keywords = [dict(r) for r in db.list_keywords(conn)]
     return JSONResponse({
         "counts": counts,
         "board_names": board_names,
@@ -543,6 +548,10 @@ async def api_status(request: Request):
         "state_dir_env": os.environ.get("STATE_DIR") or "(unset - using local repo path)",
         "recent_runs": recent_runs,
         "top_recent_postings": [dict(r) for r in top_scores],
+        "settings": settings,
+        "roles": roles,
+        "locations": locations,
+        "keywords": keywords,
     })
 
 
